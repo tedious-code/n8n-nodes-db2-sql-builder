@@ -48,7 +48,9 @@
     "ibm_db": "^3.2.5"
   },
   "peerDependencies": {
-    "n8n-workflow": "*"
+    "n8n-workflow": "*",
+    "lodash": "^4.17.0",
+    "moment": "^2.29.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
