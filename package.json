@@ -4,8 +4,13 @@
   "description": "Advanced IBM Db2 SQL Builder & Executor for n8n Community Nodes",
   "keywords": [
     "n8n-community-node-package",
+    "n8n-community-node",
     "IbmDb2",
-    "sqlbuilder"
+    "db2",
+    "sql",
+    "sqlbuilder",
+    "workflow"
+  ],
   ],
   "license": "MIT",
   "author": {
