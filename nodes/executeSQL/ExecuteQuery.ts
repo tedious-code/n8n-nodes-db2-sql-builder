@@ -297,18 +297,20 @@ export async function executeQueryAsync(
 					);
 			}
 		
-			const result = q.transform?.trim()
+			const result = q.transform?.trim() 
 				? await new Function(
 						'result',
 						'context',
+						'helpers',
+						'_',
+						'moment',
 						`
 							"use strict";
-							// available: result, context.output0, context.output1...
 							return (async () => {
 								${q.transform}
 							})();
 						`,
-				  )(raw, context)
+				  )(raw, context, ctx.helpers ,require('lodash'), require('moment'))
 				: raw;
 
 			context[outputName] = result;
