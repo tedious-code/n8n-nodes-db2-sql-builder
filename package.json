@@ -41,7 +41,7 @@
       "dist/credentials/IbmDb2OdbcCredentialsApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/Db2SQLBuilder.node.node.js"
+      "dist/nodes/Db2SQLBuilder.node.js"
     ]
   },
   "dependencies": {
