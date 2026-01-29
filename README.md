@@ -5,6 +5,26 @@
 A powerful **IBM Db2 SQL Builder** community node for **n8n**, designed for advanced SQL execution, dynamic parameter binding, and workflow-safe query orchestration.
 
 ---
+## ⚠️ IBM DB2 Node Compatibility Note
+
+The IBM DB2 community node (using ibm_db) only works reliably on Debian-based environments with Node.js 20.
+ibm_db is a native Node.js addon and depends on:
+-- Node.js ABI version
+-- node-gyp toolchain
+-- System libraries (DB2 CLI, unixODBC, libaio, libxml2)
+
+* n8n hosting / n8n Cloud / installing the package directly via the n8n UI:
+❌ Cannot compile native modules
+❌ Missing required DB2 system libraries
+❌ Results in odbc_bindings.node or NODE_MODULE_VERSION errors
+
+* ✅ Required Setup
+To use this node, you must build a custom Docker image:
+Base image: node:20-bookworm-slim
+Build ibm_db from source
+Bake the community node into the image
+This approach ensures the IBM DB2 node works correctly and consistently in n8n.
+
 ## ✨ Features
 
 ### ✅ SQL Execution
@@ -112,12 +132,8 @@ pnpm run build
 
 ## 🐳 Docker + n8n
 
-```yaml
-services:
-  n8n:
-    image: n8nio/n8n
-    volumes:
-      - ./n8n-nodes-db2-sql-builder:/home/node/.n8n/custom
+```bash
+docker compose -f docker-compose.yml up -d --build
 ```
 
 ---
@@ -125,18 +141,31 @@ services:
 ## 🧪 Development
 
 ```bash
-pnpm run dev
 pnpm run build
-pnpm run lint
 ```
 
 Clear Docker cache if UI not updating:
 ```bash
 docker compose down -v
-docker compose build --no-cache
-docker compose up -d
+docker build -t n8n-nodes-db2-sql-builder .
 ```
-
+Docker run
+```bash
+docker run -it --rm \                      
+  --name n8n-node-db2-sql-builder \
+  -p 5678:5678 \
+  -e DB_TYPE=postgresdb \
+  -e DB_POSTGRESDB_DATABASE= [TYPE DATABASE] \
+  -e DB_POSTGRESDB_HOST= [Server host] \
+  -e DB_POSTGRESDB_PORT=5432 \
+  -e DB_POSTGRESDB_USER= [User ] \
+  -e DB_POSTGRESDB_SCHEMA=public \
+  -e DB_POSTGRESDB_PASSWORD= ******* \
+  -e DB_POSTGRESDB_SSL=true \
+  -e DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=false \
+  -e N8N_COMMUNITY_PACKAGES_ENABLED=true \
+  n8n-nodes-db2-sql-builder
+```
 ---
 
 ## ⚠️ Notes
@@ -156,6 +185,9 @@ Pull requests welcome!
 If you find a bug or want a feature, open an issue.
 
 ---
+
+## Postgres DB serverless 
+https://neon.com/
 
 ## ⭐ Credits
 

@@ -1,16 +1,17 @@
-# 1. Use Node 20 (Bookworm Slim is recommended for size + compatibility)
+# 1. Use Node 22 (Bookworm Slim is recommended for size + compatibility)
 FROM --platform=linux/amd64 node:20-bookworm-slim
 
 # Arguments
+ARG N8N_VERSION=2.0.2
 ARG LAUNCHER_VERSION=1.1.1
-ARG N8N_VERSION=^2
+
 # Environment variables
 ENV N8N_VERSION=${N8N_VERSION}
 ENV NODE_ENV=production
 ENV N8N_RELEASE_TYPE=stable
 ENV SHELL /bin/sh
 
-
+# IMPORTANT: Tell n8n where to look for your custom node
 # n8n will scan this folder for packages
 ENV N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
 
@@ -31,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 3. Install n8n and pnpm
 RUN set -eux; \
-    npm install -g --omit=dev n8n@${N8N_VERSION} && \
+    npm install -g --omit=dev n8n@${N8N_VERSION} --ignore-scripts && \
     npm install -g pnpm && \
     rm -rf /usr/local/lib/node_modules/n8n/node_modules/@n8n/chat && \
     rm -rf /usr/local/lib/node_modules/n8n/node_modules/@n8n/design-system && \
@@ -57,23 +58,31 @@ RUN \
     cd - && \
     rm -r /launcher-temp
 
-# PNPM Environment variables
-ENV PNPM_HOME=/home/node/.local/share/pnpm
-ENV PATH=${PNPM_HOME}:${PATH}
-# tmp dir pnpm + node-gyp
-RUN mkdir -p /home/node/tmp && \
-    chown -R node:node /home/node/tmp
-
-ENV TMPDIR=/home/node/tmp
-
 # 5. Setup Directories and Permissions
-RUN mkdir -p /home/node/.n8n/custom && \
-    chown -R node:node /home/node/.n8n \
-    /home/node/tmp \
-    && chown -R node:node /home/node
+COPY docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh && \
+    mkdir -p /home/node/.n8n/custom && \
+    chown -R node:node /home/node/.n8n
 
-RUN pnpm add @tedious-code/n8n-nodes-db2-sql-builder
+ENV N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
+
+USER root
+RUN mkdir -p /home/node/.n8n/custom/n8n-nodes-db2-sql-builder \
+ && chown -R node:node /home/node/.n8n
 USER node
+
+# Copy ONLY compiled JS + manifest
+COPY --chown=node:node ./dist \
+  /home/node/.n8n/custom/n8n-nodes-db2-sql-builder/dist
+
+COPY --chown=node:node ./package.json \
+  /home/node/.n8n/custom/n8n-nodes-db2-sql-builder/package.json
+
+WORKDIR /home/node/.n8n/custom
+WORKDIR /home/node/.n8n/custom/n8n-nodes-db2-sql-builder
+
+RUN rm -rf /home/node/.n8n/custom/n8n-nodes-db2-sql-builder/node_modules && \
+	pnpm install --prod --prefer-offline 
 
 # 7. Finalize
 WORKDIR /home/node
