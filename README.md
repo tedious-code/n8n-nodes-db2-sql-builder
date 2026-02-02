@@ -4,6 +4,7 @@
 
 A powerful **IBM Db2 SQL Builder** community node for **n8n**, designed for advanced SQL execution, dynamic parameter binding, and workflow-safe query orchestration.
 
+# ⚠️⚠️⚠️ WARNING: You should restrict n8n node access to the database to improve security. ⚠️⚠️⚠️
 ---
 ## ⚠️ IBM DB2 Node Compatibility Note
 
