@@ -1,0 +1,61 @@
+{
+  "name": "n8n-nodes-db2-sql-builder",
+  "version": "0.1.0",
+  "description": "IBM Db2 SQL Builder & Executor for n8n Community Nodes",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n-community-node",
+    "IbmDb2",
+    "db2",
+    "sql",
+    "sqlbuilder",
+    "workflow"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Huy Phan",
+    "email": "huyplb@live.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": " https://github.com/tedious-code/n8n-nodes-db2-sql-builder.git"
+   
+  },
+  "engines": {
+    "node": ">=20 <=24",
+    "pnpm": ">=9.1"
+  },
+  "packageManager": "pnpm@9.1.4",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc && gulp build:icons",
+    "dev": "tsc --watch"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/IbmDb2OdbcCredentialsApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Db2SQLBuilder.node.js"
+    ]
+  },
+  "dependencies": {
+    "ibm_db": "^3.2.5"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*",
+    "lodash": "^4.17.0",
+    "moment": "^2.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "gulp": "^5.0.1",
+    "n8n-workflow": "^2.0.1",
+    "typescript": "^5.4.5"
+  }
+}

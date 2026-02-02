@@ -1,0 +1,32 @@
+volumes:
+  n8n_storage:
+
+networks:
+  n8n-local:
+
+services:
+  n8n:
+    image: n8n-nodes-db2-sql-builder:latest
+    container_name: n8n
+    networks: ['n8n-local']
+    volumes:
+      - n8n_storage:/home/node/.n8n
+      - ./dist:/home/node/.n8n/custom/n8n-nodes-db2-sql-builder/dist
+      - ./package.json:/home/node/.n8n/custom/n8n-nodes-db2-sql-builder/package.json
+    ports:
+      - 5678:5678
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: ep-quiet-feather-afjpwsry-pooler.c-2.us-west-2.aws.neon.tech
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: devDb
+      DB_POSTGRESDB_USER: neondb_owner
+      DB_POSTGRESDB_PASSWORD: npg_S7KB6MJljwEf
+      DB_POSTGRESDB_SSL: true
+      N8N_COMMUNITY_PACKAGES_ENABLED: true
+      N8N_CUSTOM_EXTENSIONS: /home/node/.n8n/custom/
+      DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED: false
