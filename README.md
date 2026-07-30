@@ -187,3 +187,21 @@ Refer to n8n’s [documentation on creating nodes](https://docs.n8n.io/integrati
 - Raw SQL expressions, EXISTS subqueries, and SQL-typed bind parameters require **Allow Unsafe SQL**.
 - Arbitrary JS result transforms were removed; use an n8n Code node instead.
 - Table/column identifiers are validated and schema-qualified; insert values no longer inline arbitrary SQL function calls.
+
+## Compatibility / install notes
+
+**Note:** `ibm_db` is a runtime dependency, so this works for self-hosted/custom installs; it would not pass n8n’s verified-community-node rules (no runtime deps).
+
+### npm
+
+```bash
+npm install n8n-nodes-db2-sql-builder@0.1.1
+```
+
+### Docker Hub
+
+```bash
+docker pull tedious-code/n8n-nodes-db2-sql-builder:0.1.1
+# or
+docker pull tedious-code/n8n-nodes-db2-sql-builder:latest
+```
