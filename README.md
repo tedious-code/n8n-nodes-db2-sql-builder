@@ -198,3 +198,9 @@ Built with ❤️ for the **n8n Community**
 
 Refer to our [documentation on creating nodes](https://docs.n8n.io/integrations/creating-nodes/) for detailed information on building your own nodes.
 
+
+## Security notes (v0.1+)
+
+- Raw SQL expressions, EXISTS subqueries, and SQL-typed bind parameters require **Allow Unsafe SQL**.
+- Arbitrary JS result transforms were removed; use an n8n Code node instead.
+- Table/column identifiers are validated and schema-qualified; insert values no longer inline arbitrary SQL function calls.

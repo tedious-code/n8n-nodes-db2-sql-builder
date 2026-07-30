@@ -1,132 +1,140 @@
 import type { INodeProperties } from 'n8n-workflow';
 
 export const operationFields: INodeProperties[] = [
-	/* ================= SELECT COLUMNS ================= */
 	{
-	displayName: 'Select',
-	name: 'select',
-	type: 'fixedCollection',
-	typeOptions: { multipleValues: true },
-	default: {},
-	displayOptions: {
-		show: {
-			operation: ['get'],
-		},
+		displayName: 'Allow Unsafe SQL',
+		name: 'allowUnsafeSql',
+		type: 'boolean',
+		default: false,
+		description:
+			'Whether to allow raw SQL expressions, EXISTS subqueries, and SQL-typed bind parameters. Keep disabled unless you trust every workflow editor.',
 	},
-	options: [
-		{
-			name: 'fields',
-			displayName: 'Field',
-			values: [
-				{
-					displayName: 'Type',
-					name: 'mode',
-					type: 'options',
-					options: [
-						{ name: 'Column', value: 'column' },
-						{ name: 'Aggregate', value: 'aggregate' },		
-						{ name: 'Custom SQL', value: 'custom' },
-					],
-					default: 'column',
+	// ----------------------------------
+	//             shared
+	// ----------------------------------
+	{
+		displayName: 'Table',
+		name: 'tableId',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
+		required: true,
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				placeholder: 'Select a Table...',
+				typeOptions: {
+					searchListMethod: 'searchTables',
+					searchFilterRequired: false,
+					searchable: true,
 				},
-				{
-					displayName: 'Column',
-					name: 'columnSelect',
-					type: 'collection',
-					default: {},
-					displayOptions: {
-						show: { mode: ['column'] },
-					},
-					options: [
-						{
-							displayName: 'Column',
-							name: 'column',
-							type: 'options',
-							typeOptions: {
-								loadOptionsMethod: 'getColumns',
-							},
-							default: '',
-						},
-						{
-							displayName: 'Alias',
-							name: 'alias',
-							type: 'string',
-							default: '',
-						},
-					],
-				},			
-				{
-					displayName: 'Aggregate',
-					name: 'aggregateSelect',
-					type: 'collection',
-					default: {},
-					displayOptions: {
-						show: { mode: ['aggregate'] },
-					},
-					options: [
-						{
-							displayName: 'Function',
-							name: 'fn',
-							type: 'options',
-							options: [
-								{ name: 'COUNT', value: 'COUNT' },
-								{ name: 'SUM', value: 'SUM' },
-								{ name: 'AVG', value: 'AVG' },
-								{ name: 'MIN', value: 'MIN' },
-								{ name: 'MAX', value: 'MAX' },
-							],
-							default: 'COUNT',
-						},
-						{
-							displayName: 'Column',
-							name: 'field',
-							type: 'options',
-							typeOptions: {
-								loadOptionsMethod: 'getColumns',
-							},
-							default: '',
-						},
-						{
-							displayName: 'Distinct',
-							name: 'distinct',
-							type: 'boolean',
-							default: false,
-						},
-						{
-							displayName: 'Alias',
-							name: 'alias',
-							type: 'string',
-							default: '',
-						},
-					],
-				},			
-				{
-					displayName: 'Custom SQL',
-					name: 'customSql',
-					type: 'collection',
-					default: {},
-					displayOptions: {
-						show: { mode: ['custom'] },
-					},
-					options: [
-						{
-							displayName: 'Expression',
-							name: 'expression',
-							type: 'string',
-							typeOptions: { rows: 3 },
-							default: '',
-						},
-						{
-							displayName: 'Alias',
-							name: 'alias',
-							type: 'string',
-							default: '',
-						},
-					],
-				}
-			],
+			},
+			{
+				displayName: 'Name',
+				name: 'name',
+				type: 'string',
+				placeholder: 'table_name',
+			},
+		],
+		displayOptions: {
+			show: {
+				operation: ['delete', 'get', 'update', 'create'],
+			},
 		},
-	],
+		description: 'Table to read or modify (must be a valid DB2 identifier)',
+	},
+	/* ================= SELECT (GET) ================= */
+	{
+		displayName: 'Select',
+		name: 'select',
+		placeholder: 'Add Column',
+		type: 'fixedCollection',
+		typeOptions: {
+			multipleValues: true,
+		},
+		default: {},
+		displayOptions: {
+			show: {
+				operation: ['get'],
+			},
+		},
+		options: [
+			{
+				name: 'fields',
+				displayName: 'Field',
+				values: [
+					{
+						displayName: 'Mode',
+						name: 'mode',
+						type: 'options',
+						options: [
+							{ name: 'Column', value: 'column' },
+							{ name: 'Aggregate', value: 'aggregate' },
+							{ name: 'Custom SQL', value: 'custom' },
+						],
+						default: 'column',
+					},
+					{
+						displayName: 'Column',
+						name: 'column',
+						type: 'options',
+						typeOptions: {
+							loadOptionsMethod: 'getColumns',
+							loadOptionsDependsOn: ['tableId.value'],
+						},
+						default: '',
+						displayOptions: {
+							show: { mode: ['column', 'aggregate'] },
+						},
+					},
+					{
+						displayName: 'Function',
+						name: 'fn',
+						type: 'options',
+						options: [
+							{ name: 'COUNT', value: 'COUNT' },
+							{ name: 'SUM', value: 'SUM' },
+							{ name: 'AVG', value: 'AVG' },
+							{ name: 'MIN', value: 'MIN' },
+							{ name: 'MAX', value: 'MAX' },
+						],
+						default: 'COUNT',
+						displayOptions: { show: { mode: ['aggregate'] } },
+					},
+					{
+						displayName: 'Distinct',
+						name: 'distinct',
+						type: 'boolean',
+						default: false,
+						displayOptions: { show: { mode: ['aggregate'] } },
+					},
+					{
+						displayName: 'Expression',
+						name: 'expression',
+						type: 'string',
+						typeOptions: {
+							sqlDialect: 'StandardSQL',
+							editor: 'sqlEditor',
+							rows: 2,
+						},
+						default: '',
+						displayOptions: {
+							show: {
+								mode: ['custom'],
+								'/allowUnsafeSql': [true],
+							},
+						},
+					},
+					{
+						displayName: 'Alias',
+						name: 'alias',
+						type: 'string',
+						default: '',
+					},
+				],
+			},
+		],
 	},
 	{
 		displayName: 'Data to Send',
@@ -157,7 +165,7 @@ export const operationFields: INodeProperties[] = [
 	},
 	displayOptions: {
 		show: {
-			operation: ['create', 'update','get'],
+			operation: ['create', 'update'],
 		},
 	},
 	default: {},
@@ -214,7 +222,7 @@ export const operationFields: INodeProperties[] = [
 										editor: 'sqlEditor',
 										rows: 1,
 									},
-									placeholder: `Example: CAST('123' AS INT), CURRENT_TIMESTAMP, UPPER(...)`,
+									placeholder: `Value, or CURRENT_TIMESTAMP / CURRENT_DATE / CURRENT_TIME`,
 									displayOptions: { show: { mode: ['column'] } },
 								},
 								/* CUSTOM EXPRESSION */
@@ -228,8 +236,13 @@ export const operationFields: INodeProperties[] = [
 										rows: 2,
 									},
 									default: '',
-									placeholder: `Column name of table`,
-									displayOptions: { show: { mode: ['expression'] } },
+									placeholder: `"COL" = CURRENT_TIMESTAMP`,
+									displayOptions: {
+										show: {
+											mode: ['expression'],
+											'/allowUnsafeSql': [true],
+										},
+									},
 								},
 							],
 						},
@@ -269,7 +282,7 @@ export const operationFields: INodeProperties[] = [
 				},
 				/* GROUP FILTERS */
 				{
-					displayName: 'Operatiors',
+					displayName: 'Operators',
 					name: 'filters',
 					type: 'fixedCollection',
 					typeOptions: { multipleValues: true },
@@ -366,24 +379,6 @@ export const operationFields: INodeProperties[] = [
 										},
 									},
 								},
-								/* === SUBQUERY === */
-								{
-									displayName: 'IN/NOT IN SQL Expression',
-									name: 'sql',
-									type: 'string',
-									typeOptions: {
-										sqlDialect: 'StandardSQL',
-										editor: 'sqlEditor',
-										rows: 4,
-									},
-									default: '',
-									placeholder: 'SELECT ID FROM TABLE WHERE...',
-									displayOptions: {
-										show: {
-											mode: ['expression_in', 'expression_not_in'],
-										},
-									},
-								},
 								/* === EXISTS === */
 								{
 									displayName: 'EXISTS / NOT EXISTS SQL Expression',
@@ -393,7 +388,10 @@ export const operationFields: INodeProperties[] = [
 									default: '',
 									placeholder: 'SELECT 1 FROM X WHERE X.ID = MAIN.ID',
 									displayOptions: {
-										show: { mode: ['exists', 'not_exists'] },
+										show: {
+											mode: ['exists', 'not_exists'],
+											'/allowUnsafeSql': [true],
+										},
 									},
 								},
 
@@ -410,7 +408,10 @@ export const operationFields: INodeProperties[] = [
 									default: '',
 									placeholder: '"AGE" > 18 AND "STATUS" = \'A\'',
 									displayOptions: {
-										show: { mode: ['expression'] },
+										show: {
+											mode: ['expression'],
+											'/allowUnsafeSql': [true],
+										},
 									},
 								},
 							],
@@ -481,13 +482,30 @@ export const operationFields: INodeProperties[] = [
 					displayOptions: {
 						show: {
 							mode: ['expression'],
+							'/allowUnsafeSql': [true],
 						},
 					},
 				},
 			],
 		},
 	],
-	},	
+	},
+	{
+		displayName: 'Row Limit',
+		name: 'rowLimit',
+		type: 'number',
+		typeOptions: {
+			minValue: 1,
+			maxValue: 100000,
+		},
+		default: 1000,
+		description: 'Maximum rows to return (FETCH FIRST n ROWS ONLY)',
+		displayOptions: {
+			show: {
+				operation: ['get'],
+			},
+		},
+	},
 	// ================= HAVING CONDITIONS ================= */
 	{
 	displayName: 'Having Conditions',
@@ -497,7 +515,7 @@ export const operationFields: INodeProperties[] = [
 	default: {},
 	displayOptions: {
 		show: {
-			operation: ['get', 'getAll'],
+			operation: ['get'],
 		},
 	},
 	options: [
@@ -515,6 +533,7 @@ export const operationFields: INodeProperties[] = [
 					],
 					default: 'aggregate',
 				},
+
 				/* AGGREGATE MODE */
 				{
 					displayName: 'Function',
@@ -577,7 +596,12 @@ export const operationFields: INodeProperties[] = [
 						rows: 4,
 					},
 					default: '',
-					displayOptions: { show: { mode: ['expression'] } },
+					displayOptions: {
+						show: {
+							mode: ['expression'],
+							'/allowUnsafeSql': [true],
+						},
+					},
 				},
 			],
 		},
@@ -630,7 +654,12 @@ export const operationFields: INodeProperties[] = [
 						rows: 3,
 					},
 					default: '',
-					displayOptions: { show: { mode: ['expression'] } },
+					displayOptions: {
+						show: {
+							mode: ['expression'],
+							'/allowUnsafeSql': [true],
+						},
+					},
 				},
 				{
 					displayName: 'Direction',
@@ -667,7 +696,7 @@ export const operationFields: INodeProperties[] = [
 	},
 	{
 		displayName: 'Preview query',
-		name: 'previewSQL',
+		name: 'dryRun',
 		type: 'boolean',
 		default: true,
 		displayOptions: {
@@ -680,9 +709,8 @@ export const operationFields: INodeProperties[] = [
 		type: 'options',
 		default: 'all',
 		options: [
-			{ name: 'All Outputs', value: 'all' },
-			{ name: 'Merge Output', value: 'merge' },
-			{ name: 'Last Output Only', value: 'last' },
+			{ name: 'All Queries', value: 'all' },
+			{ name: 'Last Query Only', value: 'last' },
 			{ name: 'Only Specific Output', value: 'specific' },
 		],
 		displayOptions: {
@@ -715,39 +743,29 @@ export const operationFields: INodeProperties[] = [
 				displayName: 'Query',
 				name: 'query',
 				values: [
-				{
-					displayName: 'SQL',
-					name: 'sql',
-					type: 'string',
-					required: true,
-					default: '',
-					typeOptions: {
-						editor: 'sqlEditor',
-						sqlDialect: 'StandardSQL',
-						rows: 4,
-						editorHint: `
-							Supports:
-							• ?  (positional)
-							• :name (named)
-
-							Examples:
-							WHERE id = :id
-							AND status IN (:statuses)
-							AND created BETWEEN :from AND :to
-							`,
+					{
+						displayName: 'SQL',
+						name: 'sql',
+						type: 'string',
+						required: true,
+						default: '',
+						typeOptions: {
+							editor: 'sqlEditor',
+							sqlDialect: 'StandardSQL',
+							rows: 4,
+						},
 					},
-				},			
-				/* ========================== PARAMETERS ========================== */
-				{
-					displayName: 'Parameters',
-					name: 'binding',
-					type: 'fixedCollection',
-					typeOptions: {
-						multipleValues: true,
-						multipleValueButtonText: 'Add Parameter',
-					},
-					default: {},
-					options: [
+					/* ========================== PARAMETERS ========================== */
+			{
+				displayName: 'Parameters',
+				name: 'binding',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+					multipleValueButtonText: 'Add Parameter',
+				},
+				default: {},
+				options: [
 					{
 						displayName: 'Parameter',
 						name: 'parameterValues',
@@ -758,6 +776,7 @@ export const operationFields: INodeProperties[] = [
 								type: 'options',
 								default: 'string',
 								options: [
+									{ name: 'SQL Expression', value: 'sql' },
 									{ name: 'String', value: 'string' },
 									{ name: 'Number', value: 'number' },
 									{ name: 'Boolean', value: 'boolean' },
@@ -771,29 +790,13 @@ export const operationFields: INodeProperties[] = [
 								type: 'string',
 								default: '',
 								description:
-									'Bind in order of appearance (:name first, then ?). Supports ${context.outputX}.',
+									'Parameter value (mapped sequentially to ? placeholders)',
 							},
 						],
 					},
 				],
-				},
-				/* ======================== TRANSFORM ======================== */
-					{
-						displayName: 'Transform result',
-						name: 'transform',
-						type: 'string',
-						default: '',
-						typeOptions: {
-							editor: 'jsEditor',
-							rows: 4,
-							editorHint: `Available variables:
-							- result        (raw query result)
-							- context.output0
-							- context.output1
-							- context.output2
-							`
-						},						
-					},
+			},
+					/* ======================== (transform removed: arbitrary JS was unsafe) ======================== */
 				],
 			},
 		],

@@ -1,6 +1,6 @@
 export interface HavingCondition {
 	fn: AggregateFn;
-	column?: string; 
+	column?: string;
 	operator: '=' | '>' | '<' | '>=' | '<=' | '<>';
 	value: any;
 }
@@ -19,4 +19,3 @@ export interface AggregateSelect {
 	alias?: string;
 	distinct?: boolean;
 }
-

@@ -1,38 +1,39 @@
-
-// WHERE CONDITIONS
 export type LogicalOp = 'AND' | 'OR';
 
+/** Operators as used by the UI / normalizeUiWhere (uppercased). */
 export type ConditionOperator =
 	| 'EQUAL'
 	| 'NOT_EQUAL'
-	| 'GREATER_THAN'
-	| 'LESS_THAN'
+	| 'GREATER'
+	| 'LESS'
 	| 'GREATER_EQUAL'
 	| 'LESS_EQUAL'
 	| 'LIKE'
+	| 'NOT_LIKE'
+	| 'CONTAINS'
+	| 'IS_NULL'
+	| 'IS_NOT_NULL'
 	| 'IN'
+	| 'NOT_IN'
 	| 'BETWEEN'
-	| 'IS NULL'
-	| 'IS NOT NULL'
+	| 'NOT_BETWEEN'
 	| 'EXISTS'
 	| 'NOT EXISTS'
-	| 'NOT LIKE'
-	| 'NOT IN'
-	| 'NOT BETWEEN'
-	| 'CONTAINS';
+	| 'COLUMN_IN'
+	| 'COLUMN_NOT_IN';
 
 export interface ColumnCondition {
 	mode: 'column' | 'column_in' | 'column_not_in' | 'between' | 'not_between';
 	column: string;
-	operator: ConditionOperator;
+	operator?: ConditionOperator;
 	value?: any;
-	values?: any[]; // IN / BETWEEN
+	values?: any[];
 }
 
 export interface ExistsCondition {
 	mode: 'exists' | 'not_exists';
 	operator: 'EXISTS' | 'NOT EXISTS';
-	sql: string; // correlated SQL
+	sql: string;
 }
 
 export interface SubqueryCondition {

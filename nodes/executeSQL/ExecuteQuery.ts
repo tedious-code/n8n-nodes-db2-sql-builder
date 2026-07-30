@@ -1,5 +1,10 @@
-import { IExecuteFunctions, ICredentialDataDecryptedObject, INodeExecutionData, NodeOperationError } from "n8n-workflow";
-import { createPool, getConnectionString, queryAsync, sanitizeSelectSQL, secureExecuteQuery } from "../GenericFunctions";
+import {
+	IExecuteFunctions,
+	ICredentialDataDecryptedObject,
+	INodeExecutionData,
+	NodeOperationError,
+} from 'n8n-workflow';
+import { createPool } from '../GenericFunctions';
 
 /* -------------------------------------------------------------------------- */
 /*                                    Types                                   */
@@ -15,129 +20,123 @@ type QueryItem = {
 	binding?: {
 		parameterValues?: BindingParam[];
 	};
-	transform?: string;
 };
 
-/* -------------------------------------------------------------------------- */
-/*                               Utils                               */
-/* -------------------------------------------------------------------------- */
-function isSqlExpression(
-	value: unknown,
-): value is { __sql: string } {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		'__sql' in value
-	);
+function isSqlExpression(value: unknown): value is { __sql: string } {
+	return typeof value === 'object' && value !== null && '__sql' in value;
 }
 
 /* -------------------------------------------------------------------------- */
 /*                               Binding helpers                               */
 /* -------------------------------------------------------------------------- */
-function buildSqlAndBindings(
-	sql: string,
-	params: BindingParam[],
-): { sql: string; values: any[]; empty?: boolean } {
-
+function buildSqlAndBindings(sql: string, params: BindingParam[], allowUnsafeSql: boolean) {
 	let finalSql = sql;
 	const values: any[] = [];
-	const converted = params.map(convertBinding);
+	const converted = params.map(p => convertBinding(p, allowUnsafeSql));
 
-	let paramIndex = 0;
-
-	/* ---------------- NAMED PARAMS :name ---------------- */
-	const namedRegex = /:([a-zA-Z_][a-zA-Z0-9_]*)/g;
-	const namedMap: Record<string, any> = {};
-
-	finalSql = finalSql.replace(namedRegex, (_, name) => {
-		if (!(name in namedMap)) {
-			const v = converted[paramIndex++];
-			namedMap[name] = v;
+	/* ------------------------------------------------------------------ */
+	/*                               IN (?)                               */
+	/* ------------------------------------------------------------------ */
+	if (/\bIN\s*\(\s*\?\s*\)/i.test(finalSql)) {
+		if (converted.length !== 1 || !Array.isArray(converted[0])) {
+			throw new Error('IN (?) expects exactly ONE array parameter');
 		}
 
-		const val = namedMap[name];
+		const arr = converted[0];
 
-		if (Array.isArray(val)) {
-			if (!val.length) return '(NULL)';
-			values.push(...val);
-			return val.map(() => '?').join(',');
+		if (arr.length === 0) {
+			return { sql: finalSql, values, empty: true as const };
 		}
 
-		if (isSqlExpression(val)) {
-			return val.__sql;
+		if (arr.some(v => isSqlExpression(v))) {
+			throw new Error('SQL Expression is not allowed in IN (?)');
 		}
 
-		if (val == null) return 'NULL';
+		const placeholders = arr.map(() => '?').join(',');
+		finalSql = finalSql.replace(/\bIN\s*\(\s*\?\s*\)/i, `IN (${placeholders})`);
 
-		values.push(val);
-		return '?';
-	});
-
-	/* ---------------- IN (?) positional ---------------- */
-	const inRegex = /\bIN\s*\(\s*\?\s*\)/gi;
-	let match: RegExpExecArray | null;
-
-	while ((match = inRegex.exec(finalSql)) !== null) {
-		const v = converted[paramIndex++];
-
-		if (!Array.isArray(v)) {
-			throw new Error('IN (?) requires array parameter');
-		}
-
-		if (!v.length) return { sql: finalSql, values, empty: true };
-
-		values.push(...v);
-		finalSql =
-			finalSql.slice(0, match.index) +
-			`IN (${v.map(() => '?').join(',')})` +
-			finalSql.slice(match.index + match[0].length);
+		values.push(...arr);
+		return validate(finalSql, values);
 	}
 
-	/* ---------------- REMAINING ? ---------------- */
-	for (; paramIndex < converted.length; paramIndex++) {
-		const v = converted[paramIndex];
+	/* ------------------------------------------------------------------ */
+	/*                         BETWEEN ? AND ?                            */
+	/* ------------------------------------------------------------------ */
+	if (/\bBETWEEN\s+\?\s+AND\s+\?/i.test(finalSql)) {
+		if (converted.length < 2) {
+			throw new Error('BETWEEN requires exactly 2 parameters');
+		}
 
+		const [from, to] = converted.slice(0, 2);
+
+		if (isSqlExpression(from) || isSqlExpression(to)) {
+			throw new Error('SQL Expression is not allowed in BETWEEN');
+		}
+
+		values.push(from, to);
+		converted.splice(0, 2);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/*                       Normal ? replacement                         */
+	/* ------------------------------------------------------------------ */
+	for (const v of converted) {
 		if (isSqlExpression(v)) {
 			finalSql = finalSql.replace('?', v.__sql);
-		} else if (v == null) {
-			return { sql: finalSql, values, empty: true };
 		} else {
 			values.push(v);
 		}
 	}
 
-	validate(finalSql, values);
-	return { sql: finalSql, values };
+	return validate(finalSql, values);
 }
 
-/* ------------------------------------------------------------------ */
-/*                          Final validation                           */
-/* ------------------------------------------------------------------ */
-
 function validate(sql: string, values: any[]) {
-	const expected = (sql.match(/\?/g) || []).length;
-	if (expected !== values.length) {
+	const expected = countSqlPlaceholders(sql);
+	const actual = values.length;
+
+	if (expected !== actual) {
 		throw new Error(
 			[
-				'❌ SQL parameter mismatch',
-				`Expected ?: ${expected}`,
-				`Provided: ${values.length}`,
+				'SQL parameter mismatch',
+				`Expected placeholders: ${expected}`,
+				`Provided parameters: ${actual}`,
 				`SQL: ${sql}`,
 			].join('\n'),
 		);
 	}
+
+	return { sql, values };
 }
 
+function convertBinding(param: BindingParam, allowUnsafeSql: boolean) {
+	if (typeof param.value === 'string' && param.value.startsWith('__ARRAY__:')) {
+		try {
+			return JSON.parse(param.value.replace('__ARRAY__:', ''));
+		} catch {
+			throw new Error('Invalid __ARRAY__ parameter payload');
+		}
+	}
 
-
-function normalizeScalar(type: BindingParam['type'], value: any) {
-	switch (type) {
-		case 'number': return Number(value);
-		case 'boolean': return value === true || value === 'true' || value === '1' || value === 1;
-		case 'date': return value instanceof Date ? value : new Date(value);
-		case 'null': return null;
-		case 'sql': return { __sql: value };
-		default: return String(value ?? '');
+	switch (param.type) {
+		case 'number':
+			return Number(param.value);
+		case 'boolean':
+			return param.value === 'true' || param.value === '1';
+		case 'date':
+			return new Date(param.value as string);
+		case 'null':
+			return null;
+		case 'sql':
+			if (!allowUnsafeSql) {
+				throw new Error(
+					'SQL Expression parameters require "Allow Unsafe SQL" to be enabled.',
+				);
+			}
+			return { __sql: param.value };
+		case 'string':
+		default:
+			return String(param.value ?? '');
 	}
 }
 
@@ -149,76 +148,25 @@ function normalizeBindingFromUI(
 
 	return raw.parameterValues.map(p => ({
 		type: p.type,
-		value:
-			typeof p.value === 'string'
-				? interpolate(p.value, context)
-				: p.value,
+		value: typeof p.value === 'string' ? interpolate(p.value, context) : p.value,
 	}));
 }
 
-// 'string ?'
-// "identifier ?"
-// -- comment ?
-// /* comment ? */
 function countSqlPlaceholders(sql: string): number {
 	let count = 0;
 	let inSingle = false;
 	let inDouble = false;
-	let inLineComment = false;
-	let inBlockComment = false;
 
 	for (let i = 0; i < sql.length; i++) {
 		const c = sql[i];
-		const next = sql[i + 1];
 
-		// -- line comment
-		if (!inSingle && !inDouble && !inBlockComment && c === '-' && next === '-') {
-			inLineComment = true;
-			i++;
-			continue;
-		}
-
-		if (inLineComment && c === '\n') {
-			inLineComment = false;
-			continue;
-		}
-
-		// /* block comment */
-		if (!inSingle && !inDouble && !inLineComment && c === '/' && next === '*') {
-			inBlockComment = true;
-			i++;
-			continue;
-		}
-
-		if (inBlockComment && c === '*' && next === '/') {
-			inBlockComment = false;
-			i++;
-			continue;
-		}
-
-		if (inLineComment || inBlockComment) continue;
-
-		// single quote '
-		if (c === "'" && !inDouble && sql[i - 1] !== '\\') {
-			inSingle = !inSingle;
-			continue;
-		}
-
-		// double quote "
-		if (c === '"' && !inSingle && sql[i - 1] !== '\\') {
-			inDouble = !inDouble;
-			continue;
-		}
-
-		// placeholder
-		if (c === '?' && !inSingle && !inDouble) {
-			count++;
-		}
+		if (c === "'" && !inDouble) inSingle = !inSingle;
+		else if (c === '"' && !inSingle) inDouble = !inDouble;
+		else if (c === '?' && !inSingle && !inDouble) count++;
 	}
 
 	return count;
 }
-
 
 /* -------------------------------------------------------------------------- */
 /*                              Main Execute Logic                             */
@@ -227,24 +175,29 @@ export async function executeQueryAsync(
 	ctx: IExecuteFunctions,
 	credential: ICredentialDataDecryptedObject,
 ): Promise<INodeExecutionData[]> {
-
 	const queries = ctx.getNodeParameter('queries', 0) as {
 		query: QueryItem[];
 	};
-	const limit  = (ctx.getNodeParameter('limitSelect', 0, 200) as number) ?? 200;
-	const previewSQL = ctx.getNodeParameter('previewSQL', 0) as boolean;
-	const returnMode = ctx.getNodeParameter('returnMode', 0) as string;
+
+	const dryRun = ctx.getNodeParameter('dryRun', 0) as boolean;
+	const returnMode = ctx.getNodeParameter('returnMode', 0, 'all') as string;
+	const returnOutput = ctx.getNodeParameter('returnOutput', 0, 0) as number;
 	const stopOnError = ctx.getNodeParameter('stopOnError', 0) as boolean;
 	const inTransaction = ctx.getNodeParameter('useTransaction', 0) as boolean;
+	const allowUnsafeSql = ctx.getNodeParameter('allowUnsafeSql', 0, false) as boolean;
 
+	if (!queries?.query?.length) {
+		throw new NodeOperationError(ctx.getNode(), 'At least one query is required');
+	}
 
 	const context: Record<string, any> = {};
-	const allOutputs: INodeExecutionData[] = [];
+	const out: INodeExecutionData[] = [];
+	let transactionFailed = false;
 
 	const conn = await createPool(credential);
 
 	try {
-		if (inTransaction && !previewSQL) {
+		if (inTransaction && !dryRun) {
 			await conn.beginTransaction();
 		}
 
@@ -252,196 +205,106 @@ export async function executeQueryAsync(
 			const q = queries.query[i];
 			const outputName = `output${i}`;
 
-			const params = normalizeBindingFromUI(q.binding, context);
-			let { sql, values, empty} = buildSqlAndBindings(
-				q.sql,
-				params,
-			);
+			try {
+				const params = normalizeBindingFromUI(q.binding, context);
+				const bindingResult = buildSqlAndBindings(q.sql, params, allowUnsafeSql);
+				const { sql, values } = bindingResult;
 
-			// PREVIEW QUERIES
-			if (previewSQL) {				
-				allOutputs.push({
+				if (dryRun) {
+					out.push({
+						json: {
+							[outputName]: {
+								sql,
+								parameters: values.map((v, idx) => ({
+									index: idx + 1,
+									value: v,
+								})),
+								valid: true,
+							},
+						},
+					});
+					continue;
+				}
+
+				if ('empty' in bindingResult && bindingResult.empty) {
+					context[outputName] = [];
+					out.push({ json: { [outputName]: [] } });
+					continue;
+				}
+
+				const result = await conn.queryAsync(sql, values);
+				context[outputName] = result;
+				out.push({ json: { [outputName]: result } });
+			} catch (e) {
+				const message = (e as Error).message;
+				out.push({
 					json: {
 						[outputName]: {
-							sql,
-							placeholders: countSqlPlaceholders(sql), // COUNT ? and parameters
-							parameters: values.map((v, i) => ({
-								index: i + 1,
-								value: v,
-							})),
-							valid: true,
+							error: message,
 						},
+						error: message,
+						contextSnapshot: { ...context },
 					},
 				});
-				continue;
+
+				if (inTransaction && !dryRun) {
+					await conn.rollbackTransaction();
+					transactionFailed = true;
+				}
+
+				if (stopOnError) {
+					throw new NodeOperationError(ctx.getNode(), message, {
+						itemIndex: i,
+					});
+				}
+
+				// Transaction is dead after rollback — do not continue mutating.
+				if (inTransaction && !dryRun) {
+					break;
+				}
 			}
-
-			if (empty) {
-				context[outputName] = [];
-				allOutputs.push({ json: { [outputName]: [] } });
-				continue;
-			}
-			// EXECUTE QUERY
-			let raw;
-
-			const onlySelect  = (ctx.getNodeParameter('onlySelect', 0, false) as boolean) ?? false;
-
-			if(onlySelect) {
-				throw new NodeOperationError(
-					ctx.getNode(),
-					'Only SELECT is allowed.',
-				);
-			}
-
-			try {
-				sql = sanitizeSelectSQL(sql, limit, onlySelect);
-				raw = await secureExecuteQuery(
-						queryAsync,
-						getConnectionString(credential),
-						sql,
-						values,
-						{
-							strict: false,
-						},
-						limit
-					);
-			} catch (e) {
-					throw new Error(
-						[
-							'❌ SQL Execution Error',
-							(e as Error).message,
-							'---',
-							`SQL: ${sql}`,
-							`Bindings: ${JSON.stringify(values)}`,
-						].join('\n'),
-					);
-			}
-		
-			const result = q.transform?.trim() 
-				? await new Function(
-						'result',
-						'context',
-						'helpers',
-						'_',
-						'moment',
-						`
-							"use strict";
-							return (async () => {
-								${q.transform}
-							})();
-						`,
-				  )(raw, context, ctx.helpers ,require('lodash'), require('moment'))
-				: raw;
-
-			context[outputName] = result;
-			allOutputs.push({ json: { [outputName]: result } });
 		}
 
-		if (inTransaction && !previewSQL) {
+		if (inTransaction && !dryRun && !transactionFailed) {
 			await conn.commitTransaction();
 		}
-
-	} catch (e) {
-		if (inTransaction && !previewSQL) {
-			await conn.rollbackTransaction();
-		}
-
-		allOutputs.push({
-			json: {
-				error: (e as Error).message,
-				contextSnapshot: context,
-			},
-		});
-
-		if (stopOnError) return allOutputs;
+	} finally {
+		await conn.closeAsync();
 	}
-	
-	if (previewSQL) return allOutputs;
 
-	switch (returnMode) {
-		case 'last':
-			return allOutputs.length
-				? [allOutputs[allOutputs.length - 1]]
-				: [];
-		case 'specific':
-			const returnOutputIndex = ctx.getNodeParameter('returnOutput', 0) as number;
-			return allOutputs[returnOutputIndex]
-				? [allOutputs[returnOutputIndex]]
-				: [];
-		case 'merge': {
-			const merged: Record<string, any> = {};
-			for (const item of allOutputs) {
-				Object.assign(merged, item.json);
-			}
-
-			return [{ json: merged }];
-		}
-
-		case 'all':
-		default:
-			return allOutputs;
+	try {
+		return applyReturnMode(out, returnMode, returnOutput);
+	} catch (e) {
+		throw new NodeOperationError(ctx.getNode(), (e as Error).message);
 	}
 }
 
+function applyReturnMode(
+	out: INodeExecutionData[],
+	returnMode: string,
+	returnOutput: number,
+): INodeExecutionData[] {
+	if (returnMode === 'last') {
+		return out.length ? [out[out.length - 1]] : out;
+	}
+	if (returnMode === 'specific') {
+		const idx = Number(returnOutput) || 0;
+		if (idx < 0 || idx >= out.length) {
+			throw new Error(`Specific output index ${idx} is out of range (0..${Math.max(out.length - 1, 0)})`);
+		}
+		return [out[idx]];
+	}
+	return out;
+}
 
-// DECODE ARRAY 
 function interpolate(str: string, ctxObj: Record<string, any>) {
 	return str.replace(/\$\{([^}]+)\}/g, (_, key) => {
-		const value = key.split('.').reduce((acc: any, part: string) =>
-			acc ? acc[part] : undefined,
-			ctxObj
+		const value = key.split('.').reduce(
+			(acc: any, part: string) => (acc ? acc[part] : undefined),
+			ctxObj,
 		);
 		if (Array.isArray(value)) return '__ARRAY__:' + JSON.stringify(value);
 
-		return value ?? '';
+		return value === undefined || value === null ? '' : String(value);
 	});
-}
-
-function convertBinding(param: BindingParam): any {
-
-	const raw = param.value;
-
-	/* -------------------------------------------------- */
-	/* CASE 1: ${output0.COL1} binding from previous result is array*/
-	/* -------------------------------------------------- */
-	if (typeof raw === 'string' && raw.startsWith('__ARRAY__:')) {
-		const arr = JSON.parse(raw.replace('__ARRAY__:', ''));
-		if (!Array.isArray(arr)) {
-			throw new Error('Invalid array binding');
-		}
-		return arr.map(v => normalizeScalar(param.type, v));
-	}
-
-	/* -------------------------------------------------- */
-	/* CASE 2: [${output0.COL1}] | [${output0.COL1},6]     */
-	/* User type array values in textbox value  */
-	/* -------------------------------------------------- */
-	if (
-		typeof raw === 'string' &&
-		raw.trim().startsWith('[') &&
-		raw.includes('__ARRAY__:')
-	) {
-		const inner = raw
-			.trim()
-			.slice(1, -1) // remove [ ]
-			.split(',')
-			.map(v => v.trim())
-			.flatMap(v => {
-				if (v.startsWith('__ARRAY__:')) {
-					const arr = JSON.parse(v.replace('__ARRAY__:', ''));
-					if (!Array.isArray(arr)) {
-						throw new Error('Invalid wrapped array binding');
-					}
-					return arr;
-				}
-				return [v];
-			});
-
-		return inner.map(v => normalizeScalar(param.type, v));
-	}
-
-	/* -------------------------------------------------- */
-	/* SCALAR ONLY                                        */
-	/* -------------------------------------------------- */
-	return normalizeScalar(param.type, raw);
 }

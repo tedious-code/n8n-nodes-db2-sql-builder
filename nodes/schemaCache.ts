@@ -1,6 +1,10 @@
-import * as ibm_db from 'ibm_db';
-import { ILoadOptionsFunctions, INodeListSearchResult, INodePropertyOptions } from 'n8n-workflow/dist/esm/interfaces';
-import { getConnectionString } from './GenericFunctions';
+import {
+	ILoadOptionsFunctions,
+	INodeListSearchResult,
+	INodePropertyOptions,
+} from 'n8n-workflow';
+import { queryAsync } from './GenericFunctions';
+import { resolveSchema } from './sqlSafety';
 
 interface CacheEntry<T> {
 	value: T;
@@ -15,10 +19,6 @@ const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 export async function getColumns(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
-
-	/* -------------------------------
-	   GET TABLE PARAM (SAFE)
-	-------------------------------- */
 	const tableParam = this.getNodeParameter('tableId') as any;
 	let tableName = '';
 
@@ -32,36 +32,16 @@ export async function getColumns(
 		return [];
 	}
 
-	/* -------------------------------
-	   GET CREDENTIALS
-	-------------------------------- */
-	const credentials = await this.getCredentials(
-		'IbmDb2OdbcCredentialsApi',
-	);
-	const connStr = getConnectionString(credentials);
-
-	const schema =
-		((credentials.schema as string) || 'DB2INST1').toUpperCase();
-
-	const cleanTable = tableName.toUpperCase();
+	const credentials = await this.getCredentials('IbmDb2OdbcCredentialsApi');
+	const schema = resolveSchema(credentials);
+	const cleanTable = String(tableName).toUpperCase();
 	const cacheKey = `${schema}.${cleanTable}`;
 
-	/* -------------------------------
-	   MANUAL REFRESH (OPTIONAL)
-	   (add boolean param in node UI)
-	-------------------------------- */
-	const refresh = this.getNodeParameter(
-		'refreshColumns',
-		0,		
-	) as boolean ?? false;
-
-	if (refresh) {
-		columnCache.delete(cacheKey);
+	const cached = columnCache.get(cacheKey);
+	if (cached && cached.expiresAt > Date.now()) {
+		return cached.value;
 	}
 
-	/* -------------------------------
-	   SQL (SAFE – PARAM BINDING)
-	-------------------------------- */
 	const sql = `
 		SELECT
 			COLNAME,
@@ -76,20 +56,7 @@ export async function getColumns(
 		ORDER BY COLNO
 	`;
 
-	/* -------------------------------
-	   QUERY DB
-	-------------------------------- */
-	const rows: any[] = await new Promise((resolve, reject) => {
-		ibm_db.open(connStr, (err, conn) => {
-			if (err) return reject(err);
-
-			conn.query(sql, [schema, cleanTable], (e, result) => {
-				conn.close(() => {});
-				if (e) return reject(e);
-				resolve(result ?? []);
-			});
-		});
-	});
+	const rows = await queryAsync(credentials, sql, [schema, cleanTable]);
 
 	if (!rows.length) {
 		columnCache.set(cacheKey, {
@@ -99,16 +66,10 @@ export async function getColumns(
 		return [];
 	}
 
-	/* -------------------------------
-	   FORMAT OPTIONS (UI vs SQL)
-	-------------------------------- */
-	const options: INodePropertyOptions[]  = [];//[{ name: 'All Columns (*)', value: '*' }];
-
-	options.push(...rows.map(col => {
+	const options: INodePropertyOptions[] = rows.map(col => {
 		const colName = col.COLNAME;
 		const typeName = col.TYPENAME;
-		const length =
-			col.LENGTH && col.LENGTH > 0 ? `(${col.LENGTH})` : '';
+		const length = col.LENGTH && col.LENGTH > 0 ? `(${col.LENGTH})` : '';
 		const nullable = col.NULLS === 'Y' ? 'NULL' : 'NOT NULL';
 		const def = col.DEFAULT ? `${col.DEFAULT}` : 'DEFAULT';
 
@@ -116,10 +77,8 @@ export async function getColumns(
 			name: `${colName} | ${typeName}${length} | ${nullable} ${def}`,
 			value: colName,
 		};
-	}));
-	/* -------------------------------
-	   SAVE CACHE
-	-------------------------------- */
+	});
+
 	columnCache.set(cacheKey, {
 		value: options,
 		expiresAt: Date.now() + CACHE_TTL_MS,
@@ -131,158 +90,63 @@ export async function getColumns(
 /**
  * Search Tables for Dropdown
  */
-
 export async function searchTables(
 	this: ILoadOptionsFunctions,
 	filter?: string,
 	paginationToken?: string,
 ): Promise<INodeListSearchResult> {
+	const credentials = await this.getCredentials('IbmDb2OdbcCredentialsApi');
+	const schema = resolveSchema(credentials);
 
-	/* -------------------------------
-	   CREDENTIALS / SCHEMA
-	-------------------------------- */
-	const credentials = await this.getCredentials(
-		'IbmDb2OdbcCredentialsApi',
-	);
-
-	const schema =
-		((credentials.schema as string) || 'DB2INST1').toUpperCase();
-
-	const connStr = getConnectionString(credentials);
-	
-	const allowTables = this.getNodeParameter('allowTables',[]) as any[];
-
-	/* -------------------------------
-	   PAGINATION
-	-------------------------------- */
 	const offset = paginationToken ? parseInt(paginationToken, 10) : 0;
 	const search = filter ? `%${filter.toUpperCase()}%` : null;
 
-	/* -------------------------------
-	   SQL (SAFE)
-	-------------------------------- */
+	const cacheKey = `${schema}|${search ?? ''}`;
 
-	const tableValues = Array.isArray(allowTables)
-	? allowTables.map(t => typeof t === 'string' ? t : t.value)
-	: [];
+	const cached = tableCache.get(cacheKey);
+	if (cached && cached.expiresAt > Date.now()) {
+		const page = cached.value.slice(offset, offset + 500);
 
-	const hasAll = tableValues.includes('*');
-	const filteredTables = tableValues.filter(t => t !== '*');
-	const tableRestrictionSql =
-		!hasAll && filteredTables.length
-			? ` AND TABLE_NAME IN (${filteredTables.map(t => `'${t}'`).join(',')})`
-			: '';
+		return {
+			results: page,
+			paginationToken:
+				offset + 500 < cached.value.length ? String(offset + 500) : undefined,
+		};
+	}
 
 	const sql = `
         SELECT TABLE_NAME AS TABNAME
         FROM SYSIBM.TABLES
-        WHERE TABLE_SCHEMA = '${schema}'
-        ${search ? `AND LOWER(TABLE_NAME) LIKE '${search.toLowerCase()}%'` : ''}
-		AND TABLE_TYPE = 'BASE TABLE'
-		${tableRestrictionSql}
-        ORDER BY TABLE_NAME ASC WITH UR;
+		WHERE TABLE_SCHEMA = ?
+            ${search ? 'AND UPPER(TABLE_NAME) LIKE ?' : ''}
+            AND TABLE_TYPE = 'BASE TABLE'
+        ORDER BY TABLE_NAME ASC WITH UR
 	`;
 
 	const params = search ? [schema, search] : [schema];
-	/* -------------------------------
-	   QUERY
-	-------------------------------- */
-	const rows: any[] = await new Promise((resolve) => {
-		ibm_db.open(connStr, (err, conn) => {
-			if (err) {
-				console.error('[DB2] open error', err);
-				return resolve([]);
-			}
 
-			conn.query(sql, params, (e, result) => {
-				conn.close(() => {});
-				if (e) {
-					console.error('[DB2] query error', e);
-					return resolve([]);
-				}
-				resolve(result ?? []);
-			});
-		});
-	});
+	let rows: any[];
+	try {
+		rows = await queryAsync(credentials, sql, params);
+	} catch {
+		return { results: [] };
+	}
 
-	/* -------------------------------
-	   FORMAT OPTIONS
-	-------------------------------- */
 	const allResults: INodePropertyOptions[] = rows.map(r => ({
 		name: r.TABNAME,
 		value: r.TABNAME,
 	}));
 
-	/* -------------------------------
-	   PAGINATE RESULT
-	-------------------------------- */
+	tableCache.set(cacheKey, {
+		value: allResults,
+		expiresAt: Date.now() + CACHE_TTL_MS,
+	});
+
 	const results = allResults.slice(offset, offset + 500);
 
 	return {
 		results,
 		paginationToken:
-			offset + 500 < allResults.length
-				? String(offset + 500)
-				: undefined,
+			offset + 500 < allResults.length ? String(offset + 500) : undefined,
 	};
-}
-
-export async function loadTables(
-	this: ILoadOptionsFunctions,
-): Promise<INodePropertyOptions[]>{
-
-	/* -------------------------------
-	   CREDENTIALS / SCHEMA
-	-------------------------------- */
-	const credentials = await this.getCredentials(
-		'IbmDb2OdbcCredentialsApi',
-	);
-
-	const schema =
-		((credentials.schema as string) || 'DB2INST1').toUpperCase();
-
-	const connStr = getConnectionString(credentials);
-
-	/* -------------------------------
-	   SQL (SAFE)
-	-------------------------------- */
-	const sql = `
-        SELECT TABLE_NAME AS TABNAME
-        FROM SYSIBM.TABLES
-        WHERE TABLE_SCHEMA = '${schema}'          
-            AND TABLE_TYPE = 'BASE TABLE'
-        ORDER BY TABLE_NAME ASC WITH UR;
-	`;
-
-	/* -------------------------------
-	   QUERY
-	-------------------------------- */
-	const rows: any[] = await new Promise((resolve) => {
-		ibm_db.open(connStr, (err, conn) => {
-			if (err) {
-				console.error('[DB2] open error', err);
-				return resolve([]);
-			}
-
-			conn.query(sql,[], (e, result) => {
-				conn.close(() => {});
-				if (e) {
-					console.error('[DB2] query error', e);
-					return resolve([]);
-				}
-				resolve(result ?? []);
-			});
-		});
-	});
-
-	/* -------------------------------
-	   FORMAT OPTIONS
-	-------------------------------- */
-	const allResults: INodePropertyOptions[] = [{ name: 'Allow All Tables', value: '*' }];
-	allResults.push(...rows.map(r => ({
-		name: r.TABNAME,
-		value: r.TABNAME,
-	})));
-
-	return allResults;	
 }

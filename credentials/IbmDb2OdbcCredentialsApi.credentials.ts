@@ -41,13 +41,6 @@ export class IbmDb2OdbcCredentialsApi implements ICredentialType {
 			required: true,
 			default: '',
 		},
-				{
-			displayName: 'Schema',
-			name: 'schema',
-			type: 'string',
-			required: true,
-			default: '',
-		},
 		{
 			displayName: 'Port',
 			name: 'port',
@@ -63,6 +56,13 @@ export class IbmDb2OdbcCredentialsApi implements ICredentialType {
 				{ name: 'TCPIP_SSL', value: 'TCPIP_SSL' },
 			],
 			default: 'TCPIP',
+		},
+		{
+			displayName: 'Schema',
+			name: 'schema',
+			type: 'string',
+			default: 'DB2INST1',
+			description: 'DB2 schema used to qualify tables (defaults to DB2INST1)',
 		},
 		{
 			displayName: 'Use SSL',

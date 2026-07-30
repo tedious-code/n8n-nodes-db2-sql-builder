@@ -1,15 +1,15 @@
-import { INodePropertyOptions } from "n8n-workflow";
-import { ColumnSchema, SelectItem } from "../type";
+import { INodePropertyOptions } from 'n8n-workflow';
+import { ColumnSchema, SelectItem } from '../type';
+import { quoteIdent, quoteAlias } from '../sqlSafety';
 
 export function buildSchemaMapFromOptions(
 	options: INodePropertyOptions[],
 ): Record<string, ColumnSchema> {
-
 	const map: Record<string, ColumnSchema> = {};
 	for (const opt of options) {
 		if (typeof opt.value !== 'string') continue;
 
-		const colName = opt.value;
+		const colName = opt.value.toUpperCase();
 		const type = (opt.description || '').toUpperCase();
 		if (!type) continue;
 
@@ -29,13 +29,14 @@ export function assertColumn(
 	column: string,
 	schema: Record<string, ColumnSchema>,
 ) {
-	if(column === '*') {
+	if (column === '*') {
 		return '*';
 	}
-	if (!schema[column]) {
+	const key = column.toUpperCase();
+	if (!schema[key] && !schema[column]) {
 		throw new Error(`Unknown column "${column}"`);
 	}
-	return `"${column}"`;
+	return quoteIdent(key, 'column');
 }
 
 export function buildSelectExpr(
@@ -43,18 +44,14 @@ export function buildSelectExpr(
 	schema: Record<string, ColumnSchema>,
 ): string {
 	switch (item.mode) {
-
-		/* ================= COLUMN ================= */
 		case 'column': {
 			const { column, alias } = item.columnSelect!;
 			const col = assertColumn(column, schema);
-			return alias ? `${col} AS "${alias}"` : col;
+			return alias ? `${col} AS ${quoteAlias(alias)}` : col;
 		}
 
-		/* ================= AGGREGATE ================= */
 		case 'aggregate': {
-			const { fn, field, distinct, alias } =
-				item.aggregateSelect!;
+			const { fn, field, distinct, alias } = item.aggregateSelect!;
 
 			let expr: string;
 
@@ -63,76 +60,71 @@ export function buildSelectExpr(
 					? `${distinct ? 'DISTINCT ' : ''}${assertColumn(field, schema)}`
 					: '*';
 			} else {
-				const col = schema[field!];
+				const key = field!.toUpperCase();
+				const col = schema[key] ?? schema[field!];
 				if (!col) {
 					throw new Error(`Unknown aggregate column "${field}"`);
 				}
 				if (['SUM', 'AVG'].includes(fn) && !col.isNumeric) {
-					throw new Error(
-						`Cannot ${fn} on non-numeric column "${field}"`,
-					);
+					throw new Error(`Cannot ${fn} on non-numeric column "${field}"`);
 				}
 				expr =
 					fn === 'SUM' || fn === 'AVG'
-						? `DECIMAL("${field}", 18, 2)`
-						: `"${field}"`;
+						? `DECIMAL(${quoteIdent(key, 'column')}, 18, 2)`
+						: quoteIdent(key, 'column');
 			}
 
 			const finalAlias =
-				alias?.trim() ||
-				`${fn.toLowerCase()}_${field ?? 'all'}`;
+				alias?.trim() || `${fn.toLowerCase()}_${field ?? 'all'}`;
 
-			return `${fn}(${expr}) AS "${finalAlias}"`;
+			return `${fn}(${expr}) AS ${quoteAlias(finalAlias)}`;
 		}
 
-		/* ================= CUSTOM ================= */
 		case 'custom': {
 			const { expression, alias } = item.customSql!;
 			if (!expression?.trim()) {
-				throw new Error(`Custom SQL expression is required`);
+				throw new Error('Custom SQL expression is required');
 			}
 			return alias
-				? `${expression} AS "${alias}"`
+				? `${expression} AS ${quoteAlias(alias)}`
 				: expression;
 		}
 
 		default:
-			throw new Error(`Unsupported select mode`);
+			throw new Error('Unsupported select mode');
 	}
 }
- 
+
 export function buildSelectClause(
 	selectItems: SelectItem[],
 	schema: Record<string, ColumnSchema>,
 ): string {
-	
 	if (!selectItems.length) {
-		selectItems.push({mode: "column", columnSelect: {column: '*' }})
+		selectItems.push({ mode: 'column', columnSelect: { column: '*' } });
 	}
 
-	return selectItems
-		.map(item => buildSelectExpr(item, schema))
-		.join(', ');
+	return selectItems.map(item => buildSelectExpr(item, schema)).join(', ');
 }
 
 export function buildSchemaMap(rows: any[]): Record<string, ColumnSchema> {
 	const map: Record<string, ColumnSchema> = {};
 
 	for (const r of rows) {
-		if(r.COLNAME == '*') {
-			map[r.COLNAME] = {
-				name: r.COLNAME,
+		const colName = String(r.COLNAME).toUpperCase();
+		if (colName === '*') {
+			map[colName] = {
+				name: colName,
 				type: null,
 				isNumeric: null,
 				isDate: null,
 				isString: null,
-				};
+			};
 			continue;
 		}
 
-		const type = r.TYPENAME.toUpperCase();
-		map[r.COLNAME] = {
-			name: r.COLNAME,
+		const type = String(r.TYPENAME).toUpperCase();
+		map[colName] = {
+			name: colName,
 			type,
 			isNumeric: ['INTEGER', 'BIGINT', 'SMALLINT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE'].includes(type),
 			isDate: ['DATE', 'TIMESTAMP', 'TIME'].includes(type),

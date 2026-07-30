@@ -8,6 +8,7 @@ import {
 	ICredentialTestFunctions,
 	INodeCredentialTestResult,
 	ICredentialDataDecryptedObject,
+	NodeOperationError,
 } from 'n8n-workflow';
 
 import {
@@ -19,7 +20,7 @@ import {
 	deleteItems,
 } from './GenericFunctions';
 import { operationFields } from './OperationDescription';
-import { getColumns, loadTables, searchTables } from './schemaCache';
+import { getColumns, searchTables } from './schemaCache';
 import { executeQueryAsync } from './executeSQL/ExecuteQuery';
 
 export class Db2SQLBuilder implements INodeType {
@@ -36,13 +37,13 @@ export class Db2SQLBuilder implements INodeType {
 		},
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
-		usableAsTool: true,
 		credentials: [
 			{
 				name: 'IbmDb2OdbcCredentialsApi',
 				required: true,
 				testedBy: 'dbConnectionTest',
-			}],
+			},
+		],
 		properties: [
 			{
 				displayName: 'Resource',
@@ -61,87 +62,11 @@ export class Db2SQLBuilder implements INodeType {
 				],
 				default: 'row',
 			},
-			// ----------------------------------
-			//             shared
-			// ----------------------------------
-			{
-			displayName: 'Table Restriction',
-			name: 'allowTables',
-			type: 'multiOptions',
-			required: true,
-			default: ['*'],
-			typeOptions: {
-				loadOptionsMethod: 'loadTables', 
-			},
-			description: 'Select one or multiple tables allowed. Select \'*\' to allow all tables.',
-			// displayOptions: {
-			// 	show: {
-			// 		operation: ['delete', 'get', 'update', 'create', 'executeSQL'],
-			// 	},
-			// },
-			},	
-			{
-				displayName: 'Allow only select operation',
-				name: 'onlySelect',
-				type: 'boolean',
-				default: false,
-				// displayOptions: {
-				// 	show: {
-				// 		operation: ['delete', 'get', 'update', 'create', 'executeSQL'],
-				// 	},
-				// },
-			},
-			{
-				displayName: 'Tables',
-				name: 'tableId',
-				type: 'resourceLocator',
-				default: { mode: 'list', value: '' },
-				required: true,
-				description: 'Table to operate on allowed tables from Table Restriction option.',
-				modes: [
-					{
-						displayName: 'From List',
-						name: 'list',
-						type: 'list',
-						placeholder: 'Select a Table...',
-						typeOptions: {
-							searchListMethod: 'searchTables',
-							searchFilterRequired: false,
-							searchable: true,
-						},
-					},
-					{
-						displayName: 'Name',
-						name: 'name',
-						type: 'string',
-						placeholder: 'table_name',
-					},
-				],
-				displayOptions: {
-					show: {
-						resource: ['row'],
-						// operation: ['delete', 'get', 'update', 'create'],
-					},
-				},
-			},
-			{
-				displayName: 'Limit to Select Only',
-				name: 'limitSelect',
-				type: 'number',
-				default: 200,
-				displayOptions: {
-					show: {
-						resource: ['row', 'executeSQL'],
-						operation: ['get','executeSQL'],
-					},
-				},
-			},
 			{
 				displayName: 'Operation',
 				name: 'operation',
 				type: 'options',
 				noDataExpression: true,
-				description: 'Operation to perform on the table.',
 				displayOptions: {
 					show: {
 						resource: ['row'],
@@ -153,7 +78,7 @@ export class Db2SQLBuilder implements INodeType {
 						value: 'get',
 						description: 'Fetch data from a table',
 						action: 'Get a row',
-					},	
+					},
 					{
 						name: 'Create',
 						value: 'create',
@@ -165,7 +90,7 @@ export class Db2SQLBuilder implements INodeType {
 						value: 'delete',
 						description: 'Delete a row for one table',
 						action: 'Delete a row',
-					},				
+					},
 					{
 						name: 'Update',
 						value: 'update',
@@ -176,7 +101,7 @@ export class Db2SQLBuilder implements INodeType {
 				default: 'get',
 			},
 			...operationFields,
-			],
+		],
 	};
 
 	methods = {
@@ -200,44 +125,45 @@ export class Db2SQLBuilder implements INodeType {
 				};
 			},
 		},
-		listSearch:{
-			searchTables,			
+		listSearch: {
+			searchTables,
 		},
 		loadOptions: {
-			getColumns,		
-			loadTables
+			getColumns,
 		},
 	};
 
-// ======================================================
-	// EXECUTE
-	// ======================================================
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const credentials = await this.getCredentials('IbmDb2OdbcCredentialsApi');
-		try {
-			const resource = this.getNodeParameter('resource', 0) as string;
-			if(resource == 'row'){
-				const operation = this.getNodeParameter('operation', 0) as string;
-				const tableRaw = this.getNodeParameter('tableId', 0);
-				const table = resolveTable(tableRaw);						
-				switch (operation) {
-					case 'create':
-						return [await createItems(this, credentials, table)];
-					case 'update':
-						return [await updateItems(this, credentials, table)];
-					case 'delete':
-						return [await deleteItems(this, credentials, table)];
-					case 'get':
-						return [await getItems(this, credentials, table)];
-					default:
-						(operation)
-						throw new Error(`Unsupported operation: ${operation}`);
-				}
+		const resource = this.getNodeParameter('resource', 0) as string;
+
+		if (resource === 'row') {
+			const operation = this.getNodeParameter('operation', 0) as string;
+			const tableRaw = this.getNodeParameter('tableId', 0);
+			let table: string;
+			try {
+				table = resolveTable(tableRaw);
+			} catch (e) {
+				throw new NodeOperationError(this.getNode(), (e as Error).message);
 			}
-			else {				
-				return [await executeQueryAsync(this, credentials)];				
+
+			switch (operation) {
+				case 'create':
+					return [await createItems(this, credentials, table)];
+				case 'update':
+					return [await updateItems(this, credentials, table)];
+				case 'delete':
+					return [await deleteItems(this, credentials, table)];
+				case 'get':
+					return [await getItems(this, credentials, table)];
+				default:
+					throw new NodeOperationError(
+						this.getNode(),
+						`Unsupported operation: ${operation}`,
+					);
 			}
-		} finally {
 		}
+
+		return [await executeQueryAsync(this, credentials)];
 	}
 }
