@@ -201,7 +201,7 @@ npm install n8n-nodes-db2-sql-builder@0.1.1
 ### Docker Hub
 
 ```bash
-docker pull tedious-code/n8n-nodes-db2-sql-builder:0.1.1
+docker pull 5nickels/n8n-nodes-db2-sql-builder:0.1.1
 # or
-docker pull tedious-code/n8n-nodes-db2-sql-builder:latest
+docker pull 5nickels/n8n-nodes-db2-sql-builder:latest
 ```

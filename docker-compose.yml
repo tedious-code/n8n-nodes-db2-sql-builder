@@ -6,7 +6,7 @@ networks:
 
 services:
   n8n:
-    image: n8n-nodes-db2-sql-builder:latest
+    image: 5nickels/n8n-nodes-db2-sql-builder:latest
     container_name: n8n-db2
     build:
       context: .
@@ -16,6 +16,7 @@ services:
     networks: [n8n-local]
     ports:
       - "${N8N_HOST_PORT:-5678}:5678"
+    platform: linux/amd64
     restart: unless-stopped
     environment:
       N8N_PORT: "5678"
