@@ -1,17 +1,17 @@
 {
-	"node": "n8n-nodes-base.Db2SQLBuilder",
+	"node": "n8n-nodes-db2-sql-builder.db2sqlbuilder",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
-	"categories": ["Data & Storage"],
+	"categories": ["Data & Storage", "Development"],
 	"resources": {
-		"credentialDocumentation": [
-			{
-				"url": "https://docs.n8n.io/integrations/builtin/credentials/Db2SQLBuilder/"
-			}
-		],
 		"primaryDocumentation": [
 			{
-				"url": "https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.Db2SQLBuilder/"
+				"url": "https://github.com/tedious-code/n8n-nodes-db2-sql-builder"
+			}
+		],
+		"credentialDocumentation": [
+			{
+				"url": "https://github.com/tedious-code/n8n-nodes-db2-sql-builder"
 			}
 		],
 		"generic": []
