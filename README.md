@@ -21,8 +21,8 @@ ibm_db is a native Node.js addon and depends on:
 
 * ✅ Required Setup
 To use this node, you must build a custom Docker image:
-Base image: node:20-bookworm-slim
-Build ibm_db from source
+Base image: `node:22-bookworm-slim` (linux/amd64)
+Build `ibm_db` from source
 Bake the community node into the image
 This approach ensures the IBM DB2 node works correctly and consistently in n8n.
 
@@ -64,16 +64,11 @@ This approach ensures the IBM DB2 node works correctly and consistently in n8n.
   - Placeholder count
   - Bound parameters
 
-### 🔄 Result Transform
-- Optional **JavaScript transform**
-- Access:
-  - `result`
-  - `context.output0`, `context.output1`, ...
-- Async supported
+### 🔄 Result Handling
+- Use an n8n **Code** node for post-query transforms (inline JS transforms were removed for security)
 
 ### 📤 Output Modes
 - All outputs
-- Merge outputs
 - Last output only
 - Specific output index
 
@@ -82,6 +77,7 @@ This approach ensures the IBM DB2 node works correctly and consistently in n8n.
 ## 🧱 Node UI Overview
 
 ### Global Options
+- Allow Unsafe SQL (off by default)
 - Use Transaction
 - Stop On Error
 - Preview Query
@@ -90,7 +86,6 @@ This approach ensures the IBM DB2 node works correctly and consistently in n8n.
 ### Per Query
 - SQL Editor (Standard SQL)
 - Parameters (auto-hinted Parameter #1, #2…)
-- Transform Result (JS Editor)
 
 ---
 
@@ -133,50 +128,42 @@ pnpm run build
 
 ## 🐳 Docker + n8n
 
+Multi-stage image (Node 22 / bookworm amd64): compiles `ibm_db`, bakes the community node into `/opt/n8n-custom`, runs pinned n8n.
+
 ```bash
-docker compose -f docker-compose.yml up -d --build
+cp .env.example .env   # edit DB settings if needed; never commit .env
+docker compose up -d --build
+# UI: http://localhost:5678
 ```
+
+Rebuild after node changes:
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+> If a Postgres password was ever committed in `docker-compose.yml`, rotate it on the provider (e.g. Neon) immediately.
 
 ---
 
 ## 🧪 Development
 
 ```bash
+pnpm test
 pnpm run build
 ```
 
-Clear Docker cache if UI not updating:
-```bash
-docker compose down -v
-docker build -t n8n-nodes-db2-sql-builder .
-```
-Docker run
-```bash
-docker run -it --rm \                      
-  --name n8n-node-db2-sql-builder \
-  -p 5678:5678 \
-  -e DB_TYPE=postgresdb \
-  -e DB_POSTGRESDB_DATABASE= [TYPE DATABASE] \
-  -e DB_POSTGRESDB_HOST= [Server host] \
-  -e DB_POSTGRESDB_PORT=5432 \
-  -e DB_POSTGRESDB_USER= [User ] \
-  -e DB_POSTGRESDB_SCHEMA=public \
-  -e DB_POSTGRESDB_PASSWORD= ******* \
-  -e DB_POSTGRESDB_SSL=true \
-  -e DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=false \
-  -e N8N_COMMUNITY_PACKAGES_ENABLED=true \
-  n8n-nodes-db2-sql-builder
-```
 ---
 
 ## ⚠️ Notes
 - Empty array bindings return empty output safely
 - Preview mode disables transactions automatically
+- Prefer SQLite locally; use `.env` for Postgres — do not hardcode credentials in compose
 
 ---
 
 ## 📜 License
-[MIT](https://github.com/n8n-io/n8n-nodes-starter/blob/master/LICENSE.md)
+[MIT](./LICENSE.md)
 
 ---
 
@@ -187,17 +174,13 @@ If you find a bug or want a feature, open an issue.
 
 ---
 
-## Postgres DB serverless 
-https://neon.com/
-
 ## ⭐ Credits
 
 Built with ❤️ for the **n8n Community**
 
 ## More information
 
-Refer to our [documentation on creating nodes](https://docs.n8n.io/integrations/creating-nodes/) for detailed information on building your own nodes.
-
+Refer to n8n’s [documentation on creating nodes](https://docs.n8n.io/integrations/creating-nodes/) for detailed information on building your own nodes.
 
 ## Security notes (v0.1+)
 

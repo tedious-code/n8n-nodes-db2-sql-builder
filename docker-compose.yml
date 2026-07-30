@@ -7,26 +7,34 @@ networks:
 services:
   n8n:
     image: n8n-nodes-db2-sql-builder:latest
-    container_name: n8n
-    networks: ['n8n-local']
-    volumes:
-      - n8n_storage:/home/node/.n8n
-      - ./dist:/home/node/.n8n/custom/n8n-nodes-db2-sql-builder/dist
-      - ./package.json:/home/node/.n8n/custom/n8n-nodes-db2-sql-builder/package.json
-    ports:
-      - 5678:5678
-    restart: unless-stopped
+    container_name: n8n-db2
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        N8N_VERSION: ${N8N_VERSION:-2.32.6}
+    networks: [n8n-local]
+    ports:
+      - "${N8N_HOST_PORT:-5678}:5678"
+    restart: unless-stopped
     environment:
-      DB_TYPE: postgresdb
-      DB_POSTGRESDB_HOST: ep-quiet-feather-afjpwsry-pooler.c-2.us-west-2.aws.neon.tech
-      DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_DATABASE: devDb
-      DB_POSTGRESDB_USER: neondb_owner
-      DB_POSTGRESDB_PASSWORD: npg_S7KB6MJljwEf
-      DB_POSTGRESDB_SSL: true
-      N8N_COMMUNITY_PACKAGES_ENABLED: true
-      N8N_CUSTOM_EXTENSIONS: /home/node/.n8n/custom/
-      DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED: false
+      N8N_PORT: "5678"
+      PORT: "5678"
+      N8N_CUSTOM_EXTENSIONS: /opt/n8n-custom
+      N8N_COMMUNITY_PACKAGES_ENABLED: "true"
+      N8N_UNVERIFIED_PACKAGES_ENABLED: "true"
+      DB_TYPE: ${DB_TYPE:-sqlite}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+    env_file:
+      - path: .env
+        required: false
+    # Optional Postgres / secrets: set in .env (see .env.example). Do not commit secrets.
+    volumes:
+      # Persist n8n data only; custom node stays at /opt/n8n-custom (not shadowed)
+      - n8n_storage:/home/node/.n8n
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5678/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

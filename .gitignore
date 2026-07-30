@@ -9,3 +9,6 @@ yarn.lock
 pnpm-lock.yaml
 *.tsbuildinfo
 .pnpm-store
+.env
+.env.local
+.env.*.local
