@@ -16,6 +16,7 @@ export class IbmDb2OdbcCredentialsApi implements ICredentialType {
 			type: 'string',
 			required: true,
 			default: 'localhost',
+			description: 'Db2 hostname (connections use @foxschema/core Db2 adapter + ibm_db)',
 		},
 		{
 			displayName: 'Database',
@@ -56,6 +57,7 @@ export class IbmDb2OdbcCredentialsApi implements ICredentialType {
 				{ name: 'TCPIP_SSL', value: 'TCPIP_SSL' },
 			],
 			default: 'TCPIP',
+			description: 'TCPIP_SSL also enables SSL Security=SSL in the foxSchema Db2 connection string',
 		},
 		{
 			displayName: 'Schema',
@@ -69,6 +71,7 @@ export class IbmDb2OdbcCredentialsApi implements ICredentialType {
 			name: 'useSsl',
 			type: 'boolean',
 			default: false,
+			description: 'When enabled, foxSchema sets Security=SSL on the Db2 connection',
 		},
 	];
 }

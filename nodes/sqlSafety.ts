@@ -52,6 +52,26 @@ export function resolveSchema(credentials: ICredentialDataDecryptedObject): stri
 	return (schema || 'DB2INST1').toUpperCase();
 }
 
+/** Map IBM Db2 n8n credentials → @foxschema/core ConnectionOptions (dialect locked to db2). */
+export function toConnectionOptions(
+	credentials: ICredentialDataDecryptedObject,
+): Record<string, unknown> {
+	const useSsl =
+		Boolean(credentials.useSsl) || String(credentials.protocol ?? '') === 'TCPIP_SSL';
+	return {
+		host: String(credentials.host ?? 'localhost'),
+		port: Number(credentials.port ?? 50000),
+		database: String(credentials.database ?? ''),
+		username: String(credentials.username ?? ''),
+		password: String(credentials.password ?? ''),
+		schema: resolveSchema(credentials),
+		ssl: {
+			enabled: useSsl,
+			rejectUnauthorized: credentials.rejectUnauthorized !== false,
+		},
+	};
+}
+
 export function qualifyTable(
 	schema: string | undefined,
 	table: string,

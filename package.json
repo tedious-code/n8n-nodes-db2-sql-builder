@@ -1,14 +1,16 @@
 {
   "name": "n8n-nodes-db2-sql-builder",
-  "version": "0.1.0",
-  "description": "IBM Db2 SQL Builder & Executor for n8n Community Nodes",
+  "version": "0.1.1",
+  "description": "IBM Db2 SQL Builder for n8n powered by @foxschema/core — Docker/self-hosted only (ibm_db). Not installable via n8n Community Nodes / npm UI.",
   "keywords": [
     "n8n-community-node-package",
     "n8n-community-node",
     "IbmDb2",
     "db2",
+    "foxschema",
     "sql",
     "sqlbuilder",
+    "docker",
     "workflow"
   ],
   "license": "MIT",
@@ -31,9 +33,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && gulp build:icons",
+    "bundle:foxschema": "node scripts/bundle-foxschema.mjs",
+    "build": "pnpm run bundle:foxschema && tsc && gulp build:icons",
     "dev": "tsc --watch",
-    "test": "tsc --noEmit && node --import tsx --test test/**/*.test.ts",
+    "test": "pnpm run bundle:foxschema && tsc --noEmit && node --import tsx --test test/**/*.test.ts",
     "validate:n8n": "node scripts/validate-n8n-package.mjs"
   },
   "n8n": {
@@ -53,6 +56,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
+    "esbuild": "^0.25.0",
     "gulp": "^5.0.1",
     "n8n-workflow": "^2.0.1",
     "tsx": "^4.23.1",
