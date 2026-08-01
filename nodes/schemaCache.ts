@@ -3,8 +3,9 @@ import {
 	INodeListSearchResult,
 	INodePropertyOptions,
 } from 'n8n-workflow';
-import { queryAsync } from './GenericFunctions';
+import { loadObjectSchemas } from './GenericFunctions';
 import { resolveSchema } from './sqlSafety';
+import type { FoxTableSchema } from './foxSchema';
 
 interface CacheEntry<T> {
 	value: T;
@@ -13,21 +14,50 @@ interface CacheEntry<T> {
 
 export const columnCache = new Map<string, CacheEntry<INodePropertyOptions[]>>();
 export const tableCache = new Map<string, CacheEntry<INodePropertyOptions[]>>();
+export const objectCache = new Map<string, CacheEntry<FoxTableSchema[]>>();
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const TABLE_LIKE = new Set(['TABLE', 'VIEW', 'MQT']);
+
+function objectsCacheKey(credentials: Record<string, unknown>): string {
+	return [
+		'db2',
+		resolveSchema(credentials as any),
+		String(credentials.host ?? ''),
+		String(credentials.database ?? ''),
+		String(credentials.username ?? ''),
+	].join('|');
+}
+
+async function loadCachedObjects(
+	this: ILoadOptionsFunctions,
+): Promise<FoxTableSchema[]> {
+	const credentials = await this.getCredentials('IbmDb2OdbcCredentialsApi');
+	const key = objectsCacheKey(credentials as Record<string, unknown>);
+	const cached = objectCache.get(key);
+	if (cached && cached.expiresAt > Date.now()) {
+		return cached.value;
+	}
+
+	const objects = await loadObjectSchemas(credentials);
+	objectCache.set(key, {
+		value: objects,
+		expiresAt: Date.now() + CACHE_TTL_MS,
+	});
+	return objects;
+}
+
+function resolveObjectName(param: unknown): string {
+	if (typeof param === 'object' && param && 'value' in (param as any)) {
+		return String((param as any).value ?? '');
+	}
+	return String(param ?? '');
+}
 
 export async function getColumns(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
-	const tableParam = this.getNodeParameter('tableId') as any;
-	let tableName = '';
-
-	if (typeof tableParam === 'object' && tableParam?.value) {
-		tableName = tableParam.value;
-	} else if (typeof tableParam === 'string') {
-		tableName = tableParam;
-	}
-
+	const tableName = resolveObjectName(this.getNodeParameter('tableId', false));
 	if (!tableName) {
 		return [];
 	}
@@ -42,23 +72,21 @@ export async function getColumns(
 		return cached.value;
 	}
 
-	const sql = `
-		SELECT
-			COLNAME,
-			TYPENAME,
-			LENGTH,
-			NULLS,
-			DEFAULT
-		FROM SYSCAT.COLUMNS
-		WHERE TABSCHEMA = ?
-		  AND TABNAME   = ?
-		  AND IDENTITY  = 'N'
-		ORDER BY COLNO
-	`;
+	let objects: FoxTableSchema[];
+	try {
+		objects = await loadCachedObjects.call(this);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`FoxSchema column lookup failed: ${message}`);
+	}
 
-	const rows = await queryAsync(credentials, sql, [schema, cleanTable]);
+	const obj = objects.find(
+		o =>
+			TABLE_LIKE.has(o.objectType) &&
+			o.name.toUpperCase() === cleanTable,
+	);
 
-	if (!rows.length) {
+	if (!obj) {
 		columnCache.set(cacheKey, {
 			value: [],
 			expiresAt: Date.now() + CACHE_TTL_MS,
@@ -66,18 +94,16 @@ export async function getColumns(
 		return [];
 	}
 
-	const options: INodePropertyOptions[] = rows.map(col => {
-		const colName = col.COLNAME;
-		const typeName = col.TYPENAME;
-		const length = col.LENGTH && col.LENGTH > 0 ? `(${col.LENGTH})` : '';
-		const nullable = col.NULLS === 'Y' ? 'NULL' : 'NOT NULL';
-		const def = col.DEFAULT ? `${col.DEFAULT}` : 'DEFAULT';
-
-		return {
-			name: `${colName} | ${typeName}${length} | ${nullable} ${def}`,
-			value: colName,
-		};
-	});
+	const options: INodePropertyOptions[] = (obj.columns ?? [])
+		.filter(col => !col.identity)
+		.map(col => {
+			const nullable = col.nullable === false ? 'NOT NULL' : 'NULL';
+			const def = col.defaultValue ? ` ${col.defaultValue}` : ' DEFAULT';
+			return {
+				name: `${col.name} | ${col.type} | ${nullable}${def}`,
+				value: col.name,
+			};
+		});
 
 	columnCache.set(cacheKey, {
 		value: options,
@@ -88,7 +114,7 @@ export async function getColumns(
 }
 
 /**
- * Search Tables for Dropdown
+ * Search Tables for Dropdown (via @foxschema/core catalog)
  */
 export async function searchTables(
 	this: ILoadOptionsFunctions,
@@ -97,16 +123,13 @@ export async function searchTables(
 ): Promise<INodeListSearchResult> {
 	const credentials = await this.getCredentials('IbmDb2OdbcCredentialsApi');
 	const schema = resolveSchema(credentials);
-
 	const offset = paginationToken ? parseInt(paginationToken, 10) : 0;
-	const search = filter ? `%${filter.toUpperCase()}%` : null;
-
-	const cacheKey = `${schema}|${search ?? ''}`;
+	const search = filter?.trim().toLowerCase() ?? '';
+	const cacheKey = `${schema}|${search}`;
 
 	const cached = tableCache.get(cacheKey);
 	if (cached && cached.expiresAt > Date.now()) {
 		const page = cached.value.slice(offset, offset + 500);
-
 		return {
 			results: page,
 			paginationToken:
@@ -114,28 +137,23 @@ export async function searchTables(
 		};
 	}
 
-	const sql = `
-        SELECT TABLE_NAME AS TABNAME
-        FROM SYSIBM.TABLES
-		WHERE TABLE_SCHEMA = ?
-            ${search ? 'AND UPPER(TABLE_NAME) LIKE ?' : ''}
-            AND TABLE_TYPE = 'BASE TABLE'
-        ORDER BY TABLE_NAME ASC WITH UR
-	`;
-
-	const params = search ? [schema, search] : [schema];
-
-	let rows: any[];
+	let objects: FoxTableSchema[];
 	try {
-		rows = await queryAsync(credentials, sql, params);
-	} catch {
-		return { results: [] };
+		objects = await loadCachedObjects.call(this);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`FoxSchema catalog lookup failed: ${message}`);
 	}
 
-	const allResults: INodePropertyOptions[] = rows.map(r => ({
-		name: r.TABNAME,
-		value: r.TABNAME,
-	}));
+	const allResults: INodePropertyOptions[] = objects
+		.filter(o => TABLE_LIKE.has(o.objectType))
+		.filter(o => !search || o.name.toLowerCase().includes(search))
+		.sort((a, b) => a.name.localeCompare(b.name))
+		.map(o => ({
+			name: o.name,
+			value: o.name,
+			description: o.objectType,
+		}));
 
 	tableCache.set(cacheKey, {
 		value: allResults,
@@ -143,7 +161,6 @@ export async function searchTables(
 	});
 
 	const results = allResults.slice(offset, offset + 500);
-
 	return {
 		results,
 		paginationToken:

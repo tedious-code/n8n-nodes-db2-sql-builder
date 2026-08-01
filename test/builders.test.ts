@@ -11,6 +11,7 @@ import {
 	quoteAlias,
 	quoteIdent,
 	resolveSchema,
+	toConnectionOptions,
 } from '../nodes/sqlSafety';
 import { buildWhereClause, normalizeUiWhere } from '../nodes/builder/where.builder';
 import { buildSelectClause, buildSchemaMap } from '../nodes/builder/select.builder';
@@ -35,8 +36,11 @@ describe('sqlSafety', () => {
 		assert.equal(quoteAlias('Total Count'), '"Total Count"');
 	});
 
-	it('escapes ODBC special characters and omits password from pool key', () => {
+	it('escapes ODBC special characters', () => {
 		assert.equal(odbcEscape('p;ass'), '{p;ass}');
+	});
+
+	it('maps credentials to foxSchema ConnectionOptions and omits password from pool key', () => {
 		const creds = {
 			host: 'h',
 			port: 50000,
@@ -50,6 +54,21 @@ describe('sqlSafety', () => {
 		assert.match(conn, /PWD=secret/);
 		assert.equal(poolCacheKey(creds).includes('secret'), false);
 		assert.equal(resolveSchema({ schema: '' }), 'DB2INST1');
+
+		const opts = toConnectionOptions(creds);
+		assert.equal(opts.host, 'h');
+		assert.equal(opts.port, 50000);
+		assert.equal(opts.database, 'db');
+		assert.equal(opts.username, 'u');
+		assert.equal(opts.password, 'secret');
+		assert.equal(opts.schema, 'S1');
+		assert.equal((opts.ssl as { enabled: boolean }).enabled, false);
+
+		const sslOpts = toConnectionOptions({ ...creds, useSsl: true });
+		assert.equal((sslOpts.ssl as { enabled: boolean }).enabled, true);
+
+		const protoSsl = toConnectionOptions({ ...creds, protocol: 'TCPIP_SSL' });
+		assert.equal((protoSsl.ssl as { enabled: boolean }).enabled, true);
 	});
 
 	it('only allows safe insert literals', () => {

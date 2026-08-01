@@ -70,6 +70,9 @@ for (const p of pkg.n8n?.credentials ?? []) {
 }
 
 ok(Array.isArray(pkg.files) && pkg.files.includes('dist'), 'files includes dist');
+ok(fs.existsSync(path.join(root, 'dist', 'vendor', 'foxschema-core.js')), 'foxschema-core bundle present under dist/vendor');
+
+console.log('\nNote: ibm_db runtime dep → Docker/custom only; not n8n verified-community eligible.');
 
 if (failures.length) {
 	console.error('\nFAIL');

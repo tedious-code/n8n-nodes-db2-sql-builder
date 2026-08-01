@@ -1,207 +1,85 @@
 ![Banner image](https://user-images.githubusercontent.com/10284570/173569848-c624317f-42b1-45a6-ab09-f0ea3c247648.png)
 
-# 🧱 n8n-nodes-db2-sql-builder
+# n8n-nodes-db2-sql-builder
 
-A powerful **IBM Db2 SQL Builder** community node for **n8n**, designed for advanced SQL execution, dynamic parameter binding, and workflow-safe query orchestration.
+IBM **Db2** SQL Builder for [n8n](https://n8n.io), powered by [`@foxschema/core`](https://foxschema.com) (Db2 provider + `ibm_db` adapter).
 
-# ⚠️⚠️⚠️ WARNING: You should restrict n8n node access to the database to improve security. ⚠️⚠️⚠️
----
-## ⚠️ IBM DB2 Node Compatibility Note
-
-The IBM DB2 community node (using ibm_db) only works reliably on Debian-based environments with Node.js 20.
-ibm_db is a native Node.js addon and depends on:
--- Node.js ABI version
--- node-gyp toolchain
--- System libraries (DB2 CLI, unixODBC, libaio, libxml2)
-
-* n8n hosting / n8n Cloud / installing the package directly via the n8n UI:
-❌ Cannot compile native modules
-❌ Missing required DB2 system libraries
-❌ Results in odbc_bindings.node or NODE_MODULE_VERSION errors
-
-* ✅ Required Setup
-To use this node, you must build a custom Docker image:
-Base image: `node:22-bookworm-slim` (linux/amd64)
-Build `ibm_db` from source
-Bake the community node into the image
-This approach ensures the IBM DB2 node works correctly and consistently in n8n.
-
-## ✨ Features
-
-### ✅ SQL Execution
-- Execute **multiple SQL queries** in sequence
-- Optional **transaction support** (BEGIN / COMMIT / ROLLBACK)
-- **Stop on error** or continue execution
-
-### 🔗 Parameter Binding
-- Positional parameters `?`
-- **Named parameters** `:id`, `:userId`
-- Supports:
-  - String
-  - Number
-  - Boolean
-  - Date
-  - Null
-- Dynamic bindings from previous outputs:
-  ```sql
-  WHERE id IN (${output0.COL1})
-  WHERE id IN ([${output0.COL1}, 6, 1])
-  ```
-
-### 📦 Smart IN / BETWEEN Handling
-- Auto-expand `IN (?)` for arrays
-- Supports:
-  ```sql
-  col IN (?, ?, ?)
-  col BETWEEN ? AND ?
-  ```
-- Empty array → auto short-circuit (returns empty result safely)
-
-### 🔍 Preview / Dry Run Mode
-- Validate SQL without execution
-- Shows:
-  - Final SQL
-  - Placeholder count
-  - Bound parameters
-
-### 🔄 Result Handling
-- Use an n8n **Code** node for post-query transforms (inline JS transforms were removed for security)
-
-### 📤 Output Modes
-- All outputs
-- Last output only
-- Specific output index
+**Package name stays `n8n-nodes-db2-sql-builder`.** Distribution is **Docker Hub only**.
 
 ---
 
-## 🧱 Node UI Overview
+## Distribution (important)
 
-### Global Options
-- Allow Unsafe SQL (off by default)
-- Use Transaction
-- Stop On Error
-- Preview Query
-- Output Mode
+| Channel | Supported? |
+|---|---|
+| **Docker Hub** (`5nickels/n8n-nodes-db2-sql-builder`) | Yes |
+| npm / n8n **Community nodes** UI install | **No** |
 
-### Per Query
-- SQL Editor (Standard SQL)
-- Parameters (auto-hinted Parameter #1, #2…)
+`ibm_db` is a native addon (CLI driver + compile toolchain). n8n cannot preinstall that via the community-node installer, so this package is **not** meant for npmjs / verified-community install.
+
+For multi-dialect SQL builder **without** Db2 (Postgres, MySQL, MariaDB, SQL Server, Oracle) via npm, use [`n8n-nodes-fox-schema-sql-builder`](https://www.npmjs.com/package/n8n-nodes-fox-schema-sql-builder).
 
 ---
 
-## 📌 Example
-
-```sql
-SELECT *
-FROM users
-WHERE id IN (?)
-AND created_at BETWEEN ? AND ?
-```
-
-Bindings:
-```json
-[
-  { "type": "number", "value": "[1,2,3]" },
-  { "type": "date", "value": "2024-01-01" },
-  { "type": "date", "value": "2024-12-31" }
-]
-```
-
----
-
-## 🚀 Installation
-
-### From pnpm (recommended)
-```bash
-pnpm install n8n-nodes-db2-sql-builder
-```
-
-### Manual (local development)
-```bash
-git clone https://github.com/tedious-code/n8n-nodes-db2-sql-builder.git
-cd n8n-nodes-db2-sql-builder
-pnpm install
-pnpm run build
-```
-
----
-
-## 🐳 Docker + n8n
-
-Multi-stage image (Node 22 / bookworm amd64): compiles `ibm_db`, bakes the community node into `/opt/n8n-custom`, runs pinned n8n.
-
-```bash
-cp .env.example .env   # edit DB settings if needed; never commit .env
-docker compose up -d --build
-# UI: http://localhost:5678
-```
-
-Rebuild after node changes:
-```bash
-docker compose build --no-cache
-docker compose up -d
-```
-
-> If a Postgres password was ever committed in `docker-compose.yml`, rotate it on the provider (e.g. Neon) immediately.
-
----
-
-## 🧪 Development
-
-```bash
-pnpm test
-pnpm run build
-```
-
----
-
-## ⚠️ Notes
-- Empty array bindings return empty output safely
-- Preview mode disables transactions automatically
-- Prefer SQLite locally; use `.env` for Postgres — do not hardcode credentials in compose
-
----
-
-## 📜 License
-[MIT](./LICENSE.md)
-
----
-
-## 🤝 Contributing
-
-Pull requests welcome!
-If you find a bug or want a feature, open an issue.
-
----
-
-## ⭐ Credits
-
-Built with ❤️ for the **n8n Community**
-
-## More information
-
-Refer to n8n’s [documentation on creating nodes](https://docs.n8n.io/integrations/creating-nodes/) for detailed information on building your own nodes.
-
-## Security notes (v0.1+)
-
-- Raw SQL expressions, EXISTS subqueries, and SQL-typed bind parameters require **Allow Unsafe SQL**.
-- Arbitrary JS result transforms were removed; use an n8n Code node instead.
-- Table/column identifiers are validated and schema-qualified; insert values no longer inline arbitrary SQL function calls.
-
-## Compatibility / install notes
-
-**Note:** `ibm_db` is a runtime dependency, so this works for self-hosted/custom installs; it would not pass n8n’s verified-community-node rules (no runtime deps).
-
-### npm
-
-```bash
-npm install n8n-nodes-db2-sql-builder@0.1.1
-```
-
-### Docker Hub
+## Docker Hub
 
 ```bash
 docker pull 5nickels/n8n-nodes-db2-sql-builder:0.1.1
 # or
 docker pull 5nickels/n8n-nodes-db2-sql-builder:latest
 ```
+
+Local compose (requires sibling [`foxSchema`](https://github.com/tedious-code/foxschema) checkout next to this repo for image builds):
+
+```bash
+# Layout:
+#   ../foxSchema/
+#   ./n8n-nodes-db2-sql-builder/   (this repo)
+
+cp .env.example .env
+docker compose up -d --build
+# UI: http://localhost:5678
+```
+
+Compose builds with `context: ..` so the Dockerfile can bundle `@foxschema/core` from `../foxSchema/packages/core`.
+
+---
+
+## Features
+
+- Row get / create / update / delete with SELECT, WHERE, GROUP BY, HAVING, ORDER BY, `FETCH FIRST`
+- Execute Query: multi-statement, bindings, preview/dry-run, transactions
+- Catalog browse via foxSchema Db2 provider (`getTables`)
+- Security: **Allow Unsafe SQL** off by default; validated identifiers; schema-qualified tables
+
+---
+
+## Credentials
+
+**IBM DB2 Credential** — host, database, user, password, port (default 50000), protocol / SSL, schema (default `DB2INST1`). Mapped to foxSchema `ConnectionOptions` for the Db2 adapter.
+
+---
+
+## Development
+
+Requires sibling `../foxSchema` for `pnpm build` (bundles core into `dist/vendor/foxschema-core.js`).
+
+```bash
+pnpm install
+pnpm test
+pnpm build
+pnpm validate:n8n
+```
+
+`validate:n8n` checks package layout for custom Docker installs — it does **not** mean the package is eligible as a verified community node (runtime `ibm_db` remains).
+
+---
+
+## Security notes
+
+- Raw SQL expressions, EXISTS subqueries, and SQL-typed bind parameters require **Allow Unsafe SQL**.
+- Prefer least-privilege Db2 accounts for n8n workflows.
+
+## License
+
+[MIT](./LICENSE.md)

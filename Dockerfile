@@ -2,13 +2,18 @@
 #
 # Slim multi-stage image for self-hosted n8n + Db2 community node.
 # ibm_db requires glibc → Debian bookworm (not Alpine).
+# Bundles @foxschema/core from sibling ../foxSchema (build context = parent dir).
 # Final stage never installs compilers (avoids ~400MB leftover apt layers).
+#
+# Build (from parent of this repo + foxSchema):
+#   docker build -f n8n-nodes-db2-sql-builder/Dockerfile -t 5nickels/n8n-nodes-db2-sql-builder:latest .
+# Or: docker compose build (compose sets context to ..)
 
 ARG NODE_VERSION=22-bookworm-slim
 ARG N8N_VERSION=2.32.6
 
 ############################
-# 1) Build community node + compile ibm_db
+# 1) Build community node + compile ibm_db + bundle foxschema core
 ############################
 FROM --platform=linux/amd64 node:${NODE_VERSION} AS extension-builder
 
@@ -22,16 +27,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		libxml2 \
 	&& rm -rf /var/lib/apt/lists/*
 
-WORKDIR /build
+WORKDIR /workspace/n8n-nodes-db2-sql-builder
 RUN corepack enable && corepack prepare pnpm@9.1.4 --activate
 
-COPY package.json ./
-COPY tsconfig.json gulpfile.js index.ts ./
-COPY nodes ./nodes
-COPY credentials ./credentials
-COPY IbmDb2.svg ./
+# Sibling foxSchema core (required by scripts/bundle-foxschema.mjs)
+COPY foxSchema/packages/core /workspace/foxSchema/packages/core
 
-# Skip unrelated native addons from n8n-workflow; rebuild ibm_db only
+COPY n8n-nodes-db2-sql-builder/package.json ./
+COPY n8n-nodes-db2-sql-builder/tsconfig.json n8n-nodes-db2-sql-builder/gulpfile.js n8n-nodes-db2-sql-builder/index.ts ./
+COPY n8n-nodes-db2-sql-builder/nodes ./nodes
+COPY n8n-nodes-db2-sql-builder/credentials ./credentials
+COPY n8n-nodes-db2-sql-builder/scripts ./scripts
+COPY n8n-nodes-db2-sql-builder/IbmDb2.svg ./
+
+# Skip unrelated native addons; rebuild ibm_db; bundle core + compile node
 RUN pnpm install --ignore-scripts \
 	&& pnpm rebuild ibm_db \
 	&& pnpm build \
@@ -102,11 +111,11 @@ RUN ln -sfn /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n \
 RUN mkdir -p /opt/n8n-custom/node_modules \
 	&& chown -R node:node /opt/n8n-custom /home/node
 
-COPY --from=extension-builder --chown=node:node /build/dist \
+COPY --from=extension-builder --chown=node:node /workspace/n8n-nodes-db2-sql-builder/dist \
 	/opt/n8n-custom/node_modules/n8n-nodes-db2-sql-builder/dist
-COPY --from=extension-builder --chown=node:node /build/package.json \
+COPY --from=extension-builder --chown=node:node /workspace/n8n-nodes-db2-sql-builder/package.json \
 	/opt/n8n-custom/node_modules/n8n-nodes-db2-sql-builder/package.json
-COPY --from=extension-builder --chown=node:node /build/node_modules \
+COPY --from=extension-builder --chown=node:node /workspace/n8n-nodes-db2-sql-builder/node_modules \
 	/opt/n8n-custom/node_modules/n8n-nodes-db2-sql-builder/node_modules
 
 RUN ln -sfn /opt/n8n-custom/node_modules/n8n-nodes-db2-sql-builder \
@@ -114,7 +123,7 @@ RUN ln -sfn /opt/n8n-custom/node_modules/n8n-nodes-db2-sql-builder \
 	&& mkdir -p /home/node/.n8n \
 	&& chown -R node:node /home/node /opt/n8n-custom
 
-COPY --chown=root:root docker-entrypoint.sh /docker-entrypoint.sh
+COPY --chown=root:root n8n-nodes-db2-sql-builder/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 USER node

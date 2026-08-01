@@ -1,4 +1,3 @@
-import * as ibm_db from 'ibm_db';
 import {
 	type IDataObject,
 	type ICredentialDataDecryptedObject,
@@ -12,7 +11,6 @@ import {
 	buildHaving,
 	buildLimit,
 	buildOrderBy,
-	buildSchemaMap,
 	buildSelectClause,
 	buildWhereClause,
 	normalizeUiWhere,
@@ -23,120 +21,117 @@ import {
 	assertSafeWhereGroups,
 	buildConnectionString,
 	normalizeSafeInsertLiteral,
-	poolCacheKey,
 	qualifyTable,
 	quoteIdent,
 	resolveSchema,
+	toConnectionOptions,
 } from './sqlSafety';
+import {
+	ConnectionFactory,
+	getAdapter,
+	getRegisteredProvider,
+	type FoxTableSchema,
+} from './foxSchema';
+
+const DIALECT = 'db2';
 
 /* ---------------------------------- */
-/* Connection */
+/* Connection (via @foxschema/core) */
 /* ---------------------------------- */
-
-const DB2_POOL_MAX_SIZE = 10;
-const DB2_POOL_IDLE_TIMEOUT_MS = 60_000;
-
-type PoolEntry = {
-	pool: ibm_db.Pool;
-	connectionString: string;
-};
-
-const db2Pools = new Map<string, PoolEntry>();
-
-function getDb2Pool(credentials: ICredentialDataDecryptedObject): PoolEntry {
-	const key = poolCacheKey(credentials);
-	let entry = db2Pools.get(key);
-	if (!entry) {
-		entry = {
-			pool: new ibm_db.Pool({
-				maxPoolSize: DB2_POOL_MAX_SIZE,
-				idleTimeout: DB2_POOL_IDLE_TIMEOUT_MS,
-				autoCleanIdle: true,
-			}),
-			connectionString: buildConnectionString(credentials),
-		};
-		db2Pools.set(key, entry);
-	}
-	return entry;
-}
-
-async function openDb2Connection(credentials: ICredentialDataDecryptedObject) {
-	const entry = getDb2Pool(credentials);
-	return entry.pool.open(entry.connectionString);
-}
-
-/** Closes all cached pools. Useful for graceful application shutdown and tests. */
-export async function closeDb2Pools(): Promise<void> {
-	const entries = [...db2Pools.values()];
-	db2Pools.clear();
-	await Promise.all(entries.map(({ pool }) => pool.close()));
-}
 
 export async function createPool(credentials: ICredentialDataDecryptedObject) {
-	const conn = await openDb2Connection(credentials);
+	const options = toConnectionOptions(credentials);
+	const connection = await ConnectionFactory.create(DIALECT, options);
+	const adapter = getAdapter(DIALECT);
+
 	return {
-		nativeConn: conn,
+		nativeConn: connection,
 		closeAsync: async () => {
-			await conn.close();
+			await ConnectionFactory.close(DIALECT, connection);
 		},
-
-		prepareAsync: (sql: string) =>
-			new Promise((r, rj) =>
-				conn.prepare(sql, (e, stmt) =>
-					e
-						? rj(e)
-						: r({
-								executeAsync: (params: any[]) =>
-									new Promise((re, rej) =>
-										stmt.execute(params, err =>
-											err ? rej(err) : re(true),
-										),
-									),
-						  }),
-				),
-			),
-
-		queryAsync: async (sql: string, params: any[] = []) =>
-			(await conn.query(sql, params)) as IDataObject[],
+		queryAsync: async (sql: string, params: any[] = []) => {
+			return (await adapter.query(connection, sql, params)) as IDataObject[];
+		},
 		beginTransaction: async () => {
-			await conn.beginTransaction();
+			await adapter.beginTransaction(connection);
 		},
 		commitTransaction: async () => {
-			await conn.commitTransaction();
+			await adapter.commitTransaction(connection);
 		},
 		rollbackTransaction: async () => {
-			await conn.rollbackTransaction();
+			await adapter.rollbackTransaction(connection);
 		},
 	};
+}
+
+/** Closes all foxSchema pools (ibm_db under the hood). */
+export async function closeDb2Pools(): Promise<void> {
+	await ConnectionFactory.closeAll();
+}
+
+export async function closeAllPools(): Promise<void> {
+	await ConnectionFactory.closeAll();
 }
 
 /**
  * Test Connection for Credentials UI
  */
 export async function testConnection(credentials: ICredentialDataDecryptedObject): Promise<void> {
-	await queryAsync(credentials, 'SELECT 1 FROM SYSIBM.SYSDUMMY1');
+	const provider = getRegisteredProvider(DIALECT);
+	const ok = await provider.testConnection(toConnectionOptions(credentials));
+	if (!ok) {
+		throw new Error('Db2 connection test failed');
+	}
 }
 
-function schemaColumnSql(): string {
-	return `SELECT COLNAME, TYPENAME FROM SYSCAT.COLUMNS WHERE TABSCHEMA = ? AND TABNAME = ? WITH UR`;
+export async function loadObjectSchemas(
+	credentials: ICredentialDataDecryptedObject,
+): Promise<FoxTableSchema[]> {
+	const provider = getRegisteredProvider(DIALECT);
+	const schema = resolveSchema(credentials);
+	if (!provider.getTables) {
+		throw new Error('Db2 provider does not support getTables()');
+	}
+	return provider.getTables(toConnectionOptions(credentials), schema);
+}
+
+function columnSchemaFromObject(obj: FoxTableSchema): Record<string, ColumnSchema> {
+	const map: Record<string, ColumnSchema> = {};
+	for (const col of obj.columns ?? []) {
+		const type = String(col.type ?? '').toUpperCase();
+		const entry: ColumnSchema = {
+			name: col.name,
+			type,
+			isNumeric: /INT|DECIMAL|NUMERIC|FLOAT|DOUBLE|REAL|NUMBER|MONEY|SERIAL/.test(type),
+			isDate: /DATE|TIME|TIMESTAMP/.test(type),
+			isString: /CHAR|TEXT|CLOB|XML|JSON|UUID|STRING/.test(type),
+		};
+		map[col.name] = entry;
+		map[col.name.toUpperCase()] = entry;
+	}
+	return map;
 }
 
 async function loadTableSchema(
 	credential: ICredentialDataDecryptedObject,
 	table: string,
 ): Promise<Record<string, ColumnSchema>> {
-	const schemaName = resolveSchema(credential);
-	const tableName = assertIdent(table, 'table').toUpperCase();
-	const schemaRows = await queryAsync(credential, schemaColumnSql(), [
-		schemaName,
-		tableName,
-	]);
-
-	if (!schemaRows.length) {
-		throw new Error(`Table "${schemaName}"."${tableName}" not found`);
+	const objects = await loadObjectSchemas(credential);
+	const tableName = assertIdent(table, 'table');
+	const obj = objects.find(
+		o =>
+			(o.objectType === 'TABLE' || o.objectType === 'VIEW' || o.objectType === 'MQT') &&
+			o.name.toUpperCase() === tableName.toUpperCase(),
+	);
+	if (!obj) {
+		const schemaName = resolveSchema(credential);
+		throw new Error(`Table/view "${schemaName}"."${tableName}" not found`);
 	}
-
-	return buildSchemaMap(schemaRows);
+	const map = columnSchemaFromObject(obj);
+	if (!Object.keys(map).length) {
+		throw new Error(`No columns found for "${tableName}"`);
+	}
+	return map;
 }
 
 function getAllowUnsafeSql(ctx: IExecuteFunctions): boolean {
@@ -660,14 +655,7 @@ export function queryAsync(
 	sql: string,
 	params: any[] = [],
 ): Promise<any[]> {
-	return (async () => {
-		const conn = await openDb2Connection(credentials);
-		try {
-			return (await conn.query(sql, params)) as any[];
-		} finally {
-			await conn.close();
-		}
-	})();
+	return ConnectionFactory.executeQuery(DIALECT, toConnectionOptions(credentials), sql, params);
 }
 
 /* ---------------------------------- */
