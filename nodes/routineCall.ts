@@ -146,6 +146,20 @@ export function parseParametersJson(raw: unknown): Record<string, unknown> {
 	throw new Error('Parameters JSON must be an object');
 }
 
+function assertRequiredBinds(
+	bindParams: FoxRoutineParameter[],
+	provided: Record<string, unknown>,
+): void {
+	const missing = bindParams.filter(
+		p => p.name && !lookupParamValue(provided, p.name).found,
+	);
+	if (missing.length) {
+		throw new Error(
+			`Missing IN/INOUT parameter value(s): ${missing.map(p => p.name).join(', ')}`,
+		);
+	}
+}
+
 export function resolveRoutineParameterValues(options: {
 	mode: RoutineParameterMode;
 	routine: FoxTableSchema;
@@ -161,26 +175,22 @@ export function resolveRoutineParameterValues(options: {
 
 	if (mode === 'form') {
 		const provided = rowsToValueMap(options.formValues);
-		const missing = bindParams.filter(
-			p => p.name && !lookupParamValue(provided, p.name).found,
-		);
-		if (missing.length) {
-			throw new Error(
-				`Missing IN/INOUT parameter value(s): ${missing.map(p => p.name).join(', ')}`,
-			);
-		}
+		assertRequiredBinds(bindParams, provided);
 		return provided;
 	}
 
 	if (mode === 'json') {
+		let provided: Record<string, unknown>;
 		try {
-			return parseParametersJson(options.parametersJson);
+			provided = parseParametersJson(options.parametersJson);
 		} catch (e) {
 			if (e instanceof SyntaxError) {
 				throw new Error(`Invalid Parameters JSON: ${e.message}`);
 			}
 			throw e;
 		}
+		assertRequiredBinds(bindParams, provided);
+		return provided;
 	}
 
 	const overrides = rowsToValueMap(options.overrides);

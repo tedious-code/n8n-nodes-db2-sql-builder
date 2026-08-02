@@ -223,7 +223,9 @@ export async function getParameters(
 	);
 	if (!routineName) return [];
 
-	const operation = String(this.getNodeParameter('operation', false) ?? '');
+	const operation = String(
+		this.getNodeParameter('routineOperation', false) ?? '',
+	);
 	const expectedType: 'PROCEDURE' | 'FUNCTION' | undefined =
 		operation === 'callProcedure'
 			? 'PROCEDURE'

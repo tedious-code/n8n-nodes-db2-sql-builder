@@ -130,7 +130,7 @@ export class Db2SQLBuilder implements INodeType {
 			},
 			{
 				displayName: 'Operation',
-				name: 'operation',
+				name: 'routineOperation',
 				type: 'options',
 				noDataExpression: true,
 				displayOptions: {
@@ -224,7 +224,7 @@ export class Db2SQLBuilder implements INodeType {
 		}
 
 		if (resource === 'routine') {
-			const operation = this.getNodeParameter('operation', 0) as string;
+			const operation = this.getNodeParameter('routineOperation', 0) as string;
 			switch (operation) {
 				case 'callProcedure':
 					return [await callRoutineItems(this, credentials, 'PROCEDURE')];

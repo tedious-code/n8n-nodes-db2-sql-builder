@@ -79,7 +79,7 @@ export const operationFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['routine'],
-				operation: ['callProcedure'],
+				routineOperation: ['callProcedure'],
 			},
 		},
 		description: 'Stored procedure to call (from FoxSchema Db2 catalog)',
@@ -112,7 +112,7 @@ export const operationFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['routine'],
-				operation: ['callFunction'],
+				routineOperation: ['callFunction'],
 			},
 		},
 		description: 'Scalar function to call (from FoxSchema Db2 catalog)',
@@ -143,7 +143,7 @@ export const operationFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['routine'],
-				operation: ['callProcedure', 'callFunction'],
+				routineOperation: ['callProcedure', 'callFunction'],
 			},
 		},
 	},
@@ -156,7 +156,7 @@ export const operationFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['routine'],
-				operation: ['callProcedure', 'callFunction'],
+				routineOperation: ['callProcedure', 'callFunction'],
 			},
 		},
 	},
@@ -173,7 +173,7 @@ export const operationFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['routine'],
-				operation: ['callProcedure', 'callFunction'],
+				routineOperation: ['callProcedure', 'callFunction'],
 				parameterMode: ['form'],
 			},
 		},
@@ -191,7 +191,7 @@ export const operationFields: INodeProperties[] = [
 						description: 'Catalog IN / INOUT parameter',
 						typeOptions: {
 							loadOptionsMethod: 'getParameters',
-							loadOptionsDependsOn: ['routineId.value', 'operation'],
+							loadOptionsDependsOn: ['routineId.value', 'routineOperation'],
 						},
 					},
 					{
@@ -218,7 +218,7 @@ export const operationFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['routine'],
-				operation: ['callProcedure', 'callFunction'],
+				routineOperation: ['callProcedure', 'callFunction'],
 				parameterMode: ['fromItem'],
 			},
 		},
@@ -236,7 +236,7 @@ export const operationFields: INodeProperties[] = [
 						default: '',
 						typeOptions: {
 							loadOptionsMethod: 'getParameters',
-							loadOptionsDependsOn: ['routineId.value', 'operation'],
+							loadOptionsDependsOn: ['routineId.value', 'routineOperation'],
 						},
 					},
 					{
@@ -257,7 +257,7 @@ export const operationFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['routine'],
-				operation: ['callProcedure', 'callFunction'],
+				routineOperation: ['callProcedure', 'callFunction'],
 				parameterMode: ['fromItem'],
 			},
 		},
@@ -272,7 +272,7 @@ export const operationFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['routine'],
-				operation: ['callProcedure', 'callFunction'],
+				routineOperation: ['callProcedure', 'callFunction'],
 				parameterMode: ['json'],
 			},
 		},

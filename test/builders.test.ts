@@ -17,7 +17,11 @@ import { buildWhereClause, normalizeUiWhere } from '../nodes/builder/where.build
 import { buildSelectClause, buildSchemaMap } from '../nodes/builder/select.builder';
 import { buildLimit } from '../nodes/builder/limit.builder';
 import type { ColumnSchema } from '../nodes/type';
-import { buildRoutineCallSql, findRoutine } from '../nodes/routineCall';
+import {
+	buildRoutineCallSql,
+	findRoutine,
+	resolveRoutineParameterValues,
+} from '../nodes/routineCall';
 
 const schema: Record<string, ColumnSchema> = {
 	ID: { name: 'ID', type: 'INTEGER', isNumeric: true, isDate: false, isString: false },
@@ -209,5 +213,46 @@ describe('routineCall', () => {
 		// Name-only lookup returns the first catalog match (the bug getParameters had).
 		const first = findRoutine(objects, 'SHARED');
 		assert.equal(first.objectType, 'PROCEDURE');
+	});
+
+	it('requires IN/INOUT binds in form and JSON modes', () => {
+		const routine = {
+			name: 'DO_THING',
+			objectType: 'PROCEDURE' as const,
+			columns: [],
+			parameters: [
+				{ name: 'P_ID', type: 'INTEGER', mode: 'IN', ordinal: 1 },
+				{ name: 'P_OUT', type: 'INTEGER', mode: 'OUT', ordinal: 2 },
+			],
+		};
+
+		assert.throws(
+			() =>
+				resolveRoutineParameterValues({
+					mode: 'json',
+					routine,
+					parametersJson: '{}',
+				}),
+			/Missing IN\/INOUT parameter value\(s\): P_ID/,
+		);
+
+		assert.deepEqual(
+			resolveRoutineParameterValues({
+				mode: 'json',
+				routine,
+				parametersJson: '{"P_ID": 9}',
+			}),
+			{ P_ID: 9 },
+		);
+
+		assert.throws(
+			() =>
+				resolveRoutineParameterValues({
+					mode: 'form',
+					routine,
+					formValues: [],
+				}),
+			/Missing IN\/INOUT parameter value\(s\): P_ID/,
+		);
 	});
 });
