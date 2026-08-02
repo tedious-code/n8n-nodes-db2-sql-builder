@@ -28,7 +28,7 @@ For multi-dialect SQL builder **without** Db2 (Postgres, MySQL, MariaDB, SQL Ser
 ## Docker Hub
 
 ```bash
-docker pull 5nickels/n8n-nodes-db2-sql-builder:0.1.1
+docker pull 5nickels/n8n-nodes-db2-sql-builder:0.1.2
 # or
 docker pull 5nickels/n8n-nodes-db2-sql-builder:latest
 ```

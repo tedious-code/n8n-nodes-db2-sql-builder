@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-db2-sql-builder",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "FoxSchema SQL Builder for n8n — supports all dialects (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, Db2). This Docker image provides Db2 via ibm_db (not installable via n8n Community Nodes UI).",
   "keywords": [
     "n8n-community-node-package",
