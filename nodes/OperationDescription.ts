@@ -2,6 +2,13 @@ import type { INodeProperties } from 'n8n-workflow';
 
 export const operationFields: INodeProperties[] = [
 	{
+		displayName:
+			'Powered by <a href="https://foxschema.com" target="_blank">FoxSchema</a> — supports all dialects (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, Db2). This image ships the Db2 driver (<code>ibm_db</code>). Docs: <a href="https://foxschema.com" target="_blank">foxschema.com</a>',
+		name: 'foxSchemaBacklink',
+		type: 'notice',
+		default: '',
+	},
+	{
 		displayName: 'Allow Unsafe SQL',
 		name: 'allowUnsafeSql',
 		type: 'boolean',
@@ -43,6 +50,246 @@ export const operationFields: INodeProperties[] = [
 			},
 		},
 		description: 'Table to read or modify (must be a valid DB2 identifier)',
+	},
+	{
+		displayName: 'Procedure',
+		name: 'routineId',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
+		required: true,
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				placeholder: 'Select a procedure...',
+				typeOptions: {
+					searchListMethod: 'searchProcedures',
+					searchFilterRequired: false,
+					searchable: true,
+				},
+			},
+			{
+				displayName: 'Name',
+				name: 'name',
+				type: 'string',
+				placeholder: 'procedure_name',
+			},
+		],
+		displayOptions: {
+			show: {
+				resource: ['routine'],
+				operation: ['callProcedure'],
+			},
+		},
+		description: 'Stored procedure to call (from FoxSchema Db2 catalog)',
+	},
+	{
+		displayName: 'Function',
+		name: 'routineId',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
+		required: true,
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				placeholder: 'Select a function...',
+				typeOptions: {
+					searchListMethod: 'searchFunctions',
+					searchFilterRequired: false,
+					searchable: true,
+				},
+			},
+			{
+				displayName: 'Name',
+				name: 'name',
+				type: 'string',
+				placeholder: 'function_name',
+			},
+		],
+		displayOptions: {
+			show: {
+				resource: ['routine'],
+				operation: ['callFunction'],
+			},
+		},
+		description: 'Scalar function to call (from FoxSchema Db2 catalog)',
+	},
+	{
+		displayName: 'Parameter Mode',
+		name: 'parameterMode',
+		type: 'options',
+		default: 'form',
+		noDataExpression: true,
+		options: [
+			{
+				name: 'Form',
+				value: 'form',
+				description: 'Set each IN / INOUT value from the catalog list',
+			},
+			{
+				name: 'From Item',
+				value: 'fromItem',
+				description: 'Read values from the incoming item by parameter name',
+			},
+			{
+				name: 'JSON',
+				value: 'json',
+				description: 'Pass a JSON object of parameter name → value',
+			},
+		],
+		displayOptions: {
+			show: {
+				resource: ['routine'],
+				operation: ['callProcedure', 'callFunction'],
+			},
+		},
+	},
+	{
+		displayName:
+			'OUT parameters are not captured yet. Only set IN / INOUT values. For multiple routines, use separate nodes (or Split in Batches).',
+		name: 'routineParamNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['routine'],
+				operation: ['callProcedure', 'callFunction'],
+			},
+		},
+	},
+	{
+		displayName: 'Parameters',
+		name: 'callParameters',
+		placeholder: 'Add Parameter',
+		type: 'fixedCollection',
+		typeOptions: {
+			multipleValues: true,
+			multipleValueButtonText: 'Add Parameter',
+		},
+		default: {},
+		displayOptions: {
+			show: {
+				resource: ['routine'],
+				operation: ['callProcedure', 'callFunction'],
+				parameterMode: ['form'],
+			},
+		},
+		description: 'Bind IN / INOUT values by catalog parameter name',
+		options: [
+			{
+				name: 'values',
+				displayName: 'Parameter',
+				values: [
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'options',
+						default: '',
+						description: 'Catalog IN / INOUT parameter',
+						typeOptions: {
+							loadOptionsMethod: 'getParameters',
+							loadOptionsDependsOn: ['routineId.value'],
+						},
+					},
+					{
+						displayName: 'Value',
+						name: 'value',
+						type: 'string',
+						default: '',
+						description: 'Bound value (expressions supported)',
+					},
+				],
+			},
+		],
+	},
+	{
+		displayName: 'Parameter Overrides',
+		name: 'parameterMap',
+		placeholder: 'Add Override',
+		type: 'fixedCollection',
+		typeOptions: {
+			multipleValues: true,
+			multipleValueButtonText: 'Add Override',
+		},
+		default: {},
+		displayOptions: {
+			show: {
+				resource: ['routine'],
+				operation: ['callProcedure', 'callFunction'],
+				parameterMode: ['fromItem'],
+			},
+		},
+		description:
+			'Optional overrides. Unlisted IN / INOUT params are read from the incoming item by name (case-insensitive, @-tolerant).',
+		options: [
+			{
+				name: 'values',
+				displayName: 'Override',
+				values: [
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'options',
+						default: '',
+						typeOptions: {
+							loadOptionsMethod: 'getParameters',
+							loadOptionsDependsOn: ['routineId.value'],
+						},
+					},
+					{
+						displayName: 'Value',
+						name: 'value',
+						type: 'string',
+						default: '',
+					},
+				],
+			},
+		],
+	},
+	{
+		displayName: 'Strict Mapping',
+		name: 'strictParamMapping',
+		type: 'boolean',
+		default: true,
+		displayOptions: {
+			show: {
+				resource: ['routine'],
+				operation: ['callProcedure', 'callFunction'],
+				parameterMode: ['fromItem'],
+			},
+		},
+		description:
+			'Whether to fail when an IN / INOUT parameter is missing from the item and has no override. When off, missing values bind as null.',
+	},
+	{
+		displayName: 'Parameters JSON',
+		name: 'parametersJson',
+		type: 'json',
+		default: '{}',
+		displayOptions: {
+			show: {
+				resource: ['routine'],
+				operation: ['callProcedure', 'callFunction'],
+				parameterMode: ['json'],
+			},
+		},
+		description:
+			'Object of parameter name → value, e.g. {"p_price": 100, "p_qty": 10}. Keys are matched case-insensitively.',
+	},
+	{
+		displayName:
+			'To call a procedure or function with bound parameters, use Resource → Routine.',
+		name: 'executeSqlRoutineNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['executeSQL'],
+			},
+		},
 	},
 	/* ================= SELECT (GET) ================= */
 	{

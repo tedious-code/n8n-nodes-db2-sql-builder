@@ -6,6 +6,9 @@
 	"resources": {
 		"primaryDocumentation": [
 			{
+				"url": "https://foxschema.com"
+			},
+			{
 				"url": "https://github.com/tedious-code/n8n-nodes-db2-sql-builder"
 			}
 		],

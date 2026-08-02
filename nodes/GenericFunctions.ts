@@ -32,6 +32,13 @@ import {
 	getRegisteredProvider,
 	type FoxTableSchema,
 } from './foxSchema';
+import {
+	buildRoutineCallSql,
+	findRoutine,
+	resolveRoutineName,
+	resolveRoutineParameterValues,
+	type RoutineParameterMode,
+} from './routineCall';
 
 const DIALECT = 'db2';
 
@@ -656,6 +663,126 @@ export function queryAsync(
 	params: any[] = [],
 ): Promise<any[]> {
 	return ConnectionFactory.executeQuery(DIALECT, toConnectionOptions(credentials), sql, params);
+}
+
+/**
+ * Call a catalog procedure or function with bound IN/INOUT values.
+ * Supports Form / From Item / JSON parameter modes (one routine per node).
+ * OUT placeholders are sent as null (driver-level OUT capture is not supported yet).
+ */
+export async function callRoutineItems(
+	ctx: IExecuteFunctions,
+	credentials: ICredentialDataDecryptedObject,
+	expectedType: 'PROCEDURE' | 'FUNCTION',
+): Promise<INodeExecutionData[]> {
+	const items = ctx.getInputData();
+	const itemCount = Math.max(items.length, 1);
+	const parameterMode = (ctx.getNodeParameter('parameterMode', 0, 'form') as string) as RoutineParameterMode;
+
+	let routineName: string;
+	try {
+		routineName = resolveRoutineName(ctx.getNodeParameter('routineId', 0));
+		assertIdent(routineName, expectedType === 'PROCEDURE' ? 'procedure' : 'function');
+	} catch (e) {
+		throw new NodeOperationError(ctx.getNode(), (e as Error).message);
+	}
+
+	let objects: FoxTableSchema[];
+	try {
+		objects = await loadObjectSchemas(credentials);
+	} catch (e) {
+		throw new NodeOperationError(ctx.getNode(), (e as Error).message);
+	}
+
+	let routine: FoxTableSchema;
+	try {
+		routine = findRoutine(objects, routineName, expectedType);
+	} catch (e) {
+		throw new NodeOperationError(ctx.getNode(), (e as Error).message);
+	}
+
+	const schema = resolveSchema(credentials);
+	const out: INodeExecutionData[] = [];
+
+	for (let itemIndex = 0; itemIndex < itemCount; itemIndex++) {
+		let built: ReturnType<typeof buildRoutineCallSql>;
+		try {
+			const valueByName = collectRoutineValues(ctx, itemIndex, parameterMode, routine);
+			built = buildRoutineCallSql(schema, routine, valueByName);
+		} catch (e) {
+			throw new NodeOperationError(ctx.getNode(), (e as Error).message, {
+				itemIndex,
+			});
+		}
+
+		try {
+			const rows = await queryAsync(credentials, built.sql, built.params);
+			if (rows.length) {
+				for (const row of rows) {
+					out.push({ json: row, pairedItem: { item: itemIndex } });
+				}
+			} else {
+				out.push({
+					json: {
+						success: true,
+						objectType: built.objectType,
+						routine: built.routineName,
+						sql: built.sql,
+					},
+					pairedItem: { item: itemIndex },
+				});
+			}
+		} catch (e) {
+			throw new NodeOperationError(
+				ctx.getNode(),
+				`Call ${expectedType.toLowerCase()} failed:\n${(e as Error).message}`,
+				{
+					itemIndex,
+					description: JSON.stringify(
+						{ sql: built.sql, params: built.params },
+						null,
+						2,
+					),
+				},
+			);
+		}
+	}
+
+	return out;
+}
+
+function collectRoutineValues(
+	ctx: IExecuteFunctions,
+	itemIndex: number,
+	mode: RoutineParameterMode,
+	routine: FoxTableSchema,
+): Record<string, unknown> {
+	const formUi = ctx.getNodeParameter('callParameters', itemIndex, {}) as {
+		values?: Array<{ name?: string; value?: unknown }>;
+	};
+	const mapUi = ctx.getNodeParameter('parameterMap', itemIndex, {}) as {
+		values?: Array<{ name?: string; value?: unknown }>;
+	};
+	const parametersJson = ctx.getNodeParameter('parametersJson', itemIndex, '{}');
+	const strictParamMapping = ctx.getNodeParameter(
+		'strictParamMapping',
+		itemIndex,
+		true,
+	) as boolean;
+
+	const itemJson =
+		(ctx.getInputData()[itemIndex]?.json as Record<string, unknown> | undefined) ??
+		{};
+
+	return resolveRoutineParameterValues({
+		mode,
+		routine,
+		formValues: formUi.values,
+		overrides: mapUi.values,
+		itemJson,
+		parametersJson,
+		strictParamMapping,
+	});
 }
 
 /* ---------------------------------- */
