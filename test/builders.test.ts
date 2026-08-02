@@ -17,7 +17,7 @@ import { buildWhereClause, normalizeUiWhere } from '../nodes/builder/where.build
 import { buildSelectClause, buildSchemaMap } from '../nodes/builder/select.builder';
 import { buildLimit } from '../nodes/builder/limit.builder';
 import type { ColumnSchema } from '../nodes/type';
-import { buildRoutineCallSql } from '../nodes/routineCall';
+import { buildRoutineCallSql, findRoutine } from '../nodes/routineCall';
 
 const schema: Record<string, ColumnSchema> = {
 	ID: { name: 'ID', type: 'INTEGER', isNumeric: true, isDate: false, isString: false },
@@ -180,5 +180,34 @@ describe('routineCall', () => {
 		const fnBuilt = buildRoutineCallSql('MYSCHEMA', fn, { P_X: 3 });
 		assert.match(fnBuilt.sql, /SELECT "MYSCHEMA"\."GET_TOTAL"\(\?\) AS "RESULT" FROM SYSIBM\.SYSDUMMY1/);
 		assert.deepEqual(fnBuilt.params, [3]);
+	});
+
+	it('resolves same-named procedure and function by object type', () => {
+		const objects = [
+			{
+				name: 'SHARED',
+				objectType: 'PROCEDURE',
+				columns: [],
+				parameters: [{ name: 'P_PROC', type: 'INTEGER', mode: 'IN', ordinal: 1 }],
+			},
+			{
+				name: 'SHARED',
+				objectType: 'FUNCTION',
+				columns: [],
+				parameters: [{ name: 'P_FN', type: 'VARCHAR', mode: 'IN', ordinal: 1 }],
+			},
+		];
+
+		const proc = findRoutine(objects, 'SHARED', 'PROCEDURE');
+		assert.equal(proc.objectType, 'PROCEDURE');
+		assert.equal(proc.parameters?.[0]?.name, 'P_PROC');
+
+		const fn = findRoutine(objects, 'SHARED', 'FUNCTION');
+		assert.equal(fn.objectType, 'FUNCTION');
+		assert.equal(fn.parameters?.[0]?.name, 'P_FN');
+
+		// Name-only lookup returns the first catalog match (the bug getParameters had).
+		const first = findRoutine(objects, 'SHARED');
+		assert.equal(first.objectType, 'PROCEDURE');
 	});
 });

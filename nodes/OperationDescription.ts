@@ -191,7 +191,7 @@ export const operationFields: INodeProperties[] = [
 						description: 'Catalog IN / INOUT parameter',
 						typeOptions: {
 							loadOptionsMethod: 'getParameters',
-							loadOptionsDependsOn: ['routineId.value'],
+							loadOptionsDependsOn: ['routineId.value', 'operation'],
 						},
 					},
 					{
@@ -236,7 +236,7 @@ export const operationFields: INodeProperties[] = [
 						default: '',
 						typeOptions: {
 							loadOptionsMethod: 'getParameters',
-							loadOptionsDependsOn: ['routineId.value'],
+							loadOptionsDependsOn: ['routineId.value', 'operation'],
 						},
 					},
 					{

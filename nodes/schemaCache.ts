@@ -4,6 +4,7 @@ import {
 	INodePropertyOptions,
 } from 'n8n-workflow';
 import { loadObjectSchemas } from './GenericFunctions';
+import { findRoutine } from './routineCall';
 import { resolveSchema } from './sqlSafety';
 import type { FoxTableSchema } from './foxSchema';
 
@@ -222,6 +223,14 @@ export async function getParameters(
 	);
 	if (!routineName) return [];
 
+	const operation = String(this.getNodeParameter('operation', false) ?? '');
+	const expectedType: 'PROCEDURE' | 'FUNCTION' | undefined =
+		operation === 'callProcedure'
+			? 'PROCEDURE'
+			: operation === 'callFunction'
+				? 'FUNCTION'
+				: undefined;
+
 	let objects: FoxTableSchema[];
 	try {
 		objects = await loadCachedObjects.call(this);
@@ -230,12 +239,12 @@ export async function getParameters(
 		throw new Error(`FoxSchema parameter lookup failed: ${message}`);
 	}
 
-	const obj = objects.find(
-		o =>
-			ROUTINE_TYPES.has(o.objectType) &&
-			o.name.toUpperCase() === routineName.toUpperCase(),
-	);
-	if (!obj) return [];
+	let obj: FoxTableSchema;
+	try {
+		obj = findRoutine(objects, routineName, expectedType);
+	} catch {
+		return [];
+	}
 
 	return (obj.parameters ?? [])
 		.slice()
