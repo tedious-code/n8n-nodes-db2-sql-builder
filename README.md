@@ -2,9 +2,13 @@
 
 # n8n-nodes-db2-sql-builder
 
-IBM **Db2** SQL Builder for [n8n](https://n8n.io), powered by [`@foxschema/core`](https://foxschema.com) (Db2 provider + `ibm_db` adapter).
+SQL Builder for [n8n](https://n8n.io), powered by [`@foxschema/core`](https://foxschema.com).
 
-**Package name stays `n8n-nodes-db2-sql-builder`.** Distribution is **Docker Hub only**.
+**FoxSchema supports all dialects:** PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, and **Db2**.
+
+This package ships as a **Docker image** with the **Db2** driver (`ibm_db`) baked in. Package name stays `n8n-nodes-db2-sql-builder`.
+
+For other dialects via npm/community install (no native Db2), use [`n8n-nodes-fox-schema-sql-builder`](https://www.npmjs.com/package/n8n-nodes-fox-schema-sql-builder).
 
 ---
 
@@ -24,7 +28,7 @@ For multi-dialect SQL builder **without** Db2 (Postgres, MySQL, MariaDB, SQL Ser
 ## Docker Hub
 
 ```bash
-docker pull 5nickels/n8n-nodes-db2-sql-builder:0.1.1
+docker pull 5nickels/n8n-nodes-db2-sql-builder:0.1.2
 # or
 docker pull 5nickels/n8n-nodes-db2-sql-builder:latest
 ```
@@ -48,8 +52,9 @@ Compose builds with `context: ..` so the Dockerfile can bundle `@foxschema/core`
 ## Features
 
 - Row get / create / update / delete with SELECT, WHERE, GROUP BY, HAVING, ORDER BY, `FETCH FIRST`
+- **Routine**: Call Procedure / Call Function (Form / From Item / JSON parameter modes)
 - Execute Query: multi-statement, bindings, preview/dry-run, transactions
-- Catalog browse via foxSchema Db2 provider (`getTables`)
+- Catalog browse via foxSchema Db2 provider (`getTables` — tables, views, procedures, functions)
 - Security: **Allow Unsafe SQL** off by default; validated identifiers; schema-qualified tables
 
 ---
