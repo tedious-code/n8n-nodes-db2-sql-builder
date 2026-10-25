@@ -28,7 +28,7 @@ For multi-dialect SQL builder **without** Db2 (Postgres, MySQL, MariaDB, SQL Ser
 ## Docker Hub
 
 ```bash
-docker pull 5nickels/n8n-nodes-db2-sql-builder:0.1.2
+docker pull 5nickels/n8n-nodes-db2-sql-builder:0.1.3
 # or
 docker pull 5nickels/n8n-nodes-db2-sql-builder:latest
 ```
@@ -69,6 +69,8 @@ Compose builds with `context: ..` so the Dockerfile can bundle `@foxschema/core`
 
 Requires sibling `../foxSchema` for `pnpm build` (bundles core into `dist/vendor/foxschema-core.js`).
 
+**Node.js engines:** `^22.23.4 || ^24.22.1` (see [SECURITY.md](./SECURITY.md)). Node **22.23.2** and earlier 22.x are **not** supported after the [October 2026 Node.js security releases](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
+
 ```bash
 pnpm install
 pnpm test
@@ -82,6 +84,7 @@ pnpm validate:n8n
 
 ## Security notes
 
+- **Runtime:** Docker image uses `node:22.23.4-bookworm-slim` to address HIGH CVEs in Node 22.23.2 (Brotli RCE, DNS NUL truncation, TLS IP handling). Details: [SECURITY.md](./SECURITY.md).
 - Raw SQL expressions, EXISTS subqueries, and SQL-typed bind parameters require **Allow Unsafe SQL**.
 - Prefer least-privilege Db2 accounts for n8n workflows.
 

@@ -9,7 +9,9 @@
 #   docker build -f n8n-nodes-db2-sql-builder/Dockerfile -t 5nickels/n8n-nodes-db2-sql-builder:latest .
 # Or: docker compose build (compose sets context to ..)
 
-ARG NODE_VERSION=22-bookworm-slim
+# Pin patch version: Node 22.23.2 (and earlier 22.x) are affected by Oct 2026 HIGH CVEs.
+# See https://nodejs.org/en/blog/vulnerability/october-2026-security-releases
+ARG NODE_VERSION=22.23.4-bookworm-slim
 ARG N8N_VERSION=2.32.6
 
 ############################
@@ -30,8 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /workspace/n8n-nodes-db2-sql-builder
 RUN corepack enable && corepack prepare pnpm@9.1.4 --activate
 
-# Sibling foxSchema core (required by scripts/bundle-foxschema.mjs)
-COPY foxSchema/packages/core /workspace/foxSchema/packages/core
+# Sibling foxSchema packages (required by scripts/bundle-foxschema.mjs)
+COPY foxSchema/packages/db /workspace/foxSchema/packages/db
+COPY foxSchema/packages/sql /workspace/foxSchema/packages/sql
 
 COPY n8n-nodes-db2-sql-builder/package.json ./
 COPY n8n-nodes-db2-sql-builder/tsconfig.json n8n-nodes-db2-sql-builder/gulpfile.js n8n-nodes-db2-sql-builder/index.ts ./
