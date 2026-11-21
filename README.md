@@ -45,7 +45,7 @@ docker compose up -d --build
 # UI: http://localhost:5678
 ```
 
-Compose builds with `context: ..` so the Dockerfile can bundle `@foxschema/core` from `../foxSchema/packages/core`.
+Compose builds with `context: ..` so the Dockerfile can bundle `@foxschema/db`, `@foxschema/sql` and (on newer foxSchema) the `@foxschema/db-db2` add-on from `../foxSchema/packages`.
 
 ---
 
@@ -67,7 +67,7 @@ Compose builds with `context: ..` so the Dockerfile can bundle `@foxschema/core`
 
 ## Development
 
-Requires sibling `../foxSchema` for `pnpm build` (bundles core into `dist/vendor/foxschema-core.js`).
+Requires sibling `../foxSchema` (or `FOX_SCHEMA_ROOT=/path/to/foxSchema`) for `pnpm build`; it bundles `@foxschema/db` + `@foxschema/sql`, and `@foxschema/db-db2` when that package exists, into `dist/vendor/foxschema-core.js`. The node calls `registerDb2()` at load.
 
 ```bash
 pnpm install

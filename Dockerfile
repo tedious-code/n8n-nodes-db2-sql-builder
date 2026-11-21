@@ -2,7 +2,8 @@
 #
 # Slim multi-stage image for self-hosted n8n + Db2 community node.
 # ibm_db requires glibc → Debian bookworm (not Alpine).
-# Bundles @foxschema/core from sibling ../foxSchema (build context = parent dir).
+# Bundles @foxschema/db + @foxschema/sql (+ @foxschema/db-db2 when present) from
+# sibling ../foxSchema (build context = parent dir).
 # Final stage never installs compilers (avoids ~400MB leftover apt layers).
 #
 # Build (from parent of this repo + foxSchema):
@@ -13,7 +14,7 @@ ARG NODE_VERSION=22-bookworm-slim
 ARG N8N_VERSION=2.32.6
 
 ############################
-# 1) Build community node + compile ibm_db + bundle foxschema core
+# 1) Build community node + compile ibm_db + bundle foxschema
 ############################
 FROM --platform=linux/amd64 node:${NODE_VERSION} AS extension-builder
 
@@ -30,8 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /workspace/n8n-nodes-db2-sql-builder
 RUN corepack enable && corepack prepare pnpm@9.1.4 --activate
 
-# Sibling foxSchema core (required by scripts/bundle-foxschema.mjs)
-COPY foxSchema/packages/core /workspace/foxSchema/packages/core
+# Sibling foxSchema packages (scripts/bundle-foxschema.mjs reads db, sql and,
+# on newer foxSchema, db-db2). Copy the whole dir so either layout works.
+COPY foxSchema/packages /workspace/foxSchema/packages
 
 COPY n8n-nodes-db2-sql-builder/package.json ./
 COPY n8n-nodes-db2-sql-builder/tsconfig.json n8n-nodes-db2-sql-builder/gulpfile.js n8n-nodes-db2-sql-builder/index.ts ./
@@ -40,7 +42,7 @@ COPY n8n-nodes-db2-sql-builder/credentials ./credentials
 COPY n8n-nodes-db2-sql-builder/scripts ./scripts
 COPY n8n-nodes-db2-sql-builder/IbmDb2.svg ./
 
-# Skip unrelated native addons; rebuild ibm_db; bundle core + compile node
+# Skip unrelated native addons; rebuild ibm_db; bundle foxschema + compile node
 RUN pnpm install --ignore-scripts \
 	&& pnpm rebuild ibm_db \
 	&& pnpm build \
