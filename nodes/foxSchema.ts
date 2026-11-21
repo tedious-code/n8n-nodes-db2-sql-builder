@@ -1,5 +1,5 @@
 /**
- * Loads the bundled @foxschema/core CJS build produced by scripts/bundle-foxschema.mjs.
+ * Loads the bundled foxSchema CJS build (@foxschema/db + Db2) produced by scripts/bundle-foxschema.mjs.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -64,6 +64,8 @@ type FoxBundle = {
 		rollbackTransaction: (connection: unknown) => Promise<void>;
 		packageName: string;
 	};
+	/** Present in bundles built by scripts/bundle-foxschema.mjs; absent in older ones. */
+	registerDb2?: () => void;
 };
 
 function resolveFoxBundlePath(): string {
@@ -83,5 +85,10 @@ function resolveFoxBundlePath(): string {
 
 const nodeRequire = createRequire(__filename);
 const fox = nodeRequire(resolveFoxBundlePath()) as FoxBundle;
+
+// Db2 is an add-on (@foxschema/db-db2) in newer foxSchema: register it before
+// any getAdapter('db2') / ConnectionFactory use. No-op on older bundles where
+// Db2 is built in; idempotent either way.
+fox.registerDb2?.();
 
 export const { ConnectionFactory, getRegisteredProvider, getAdapter } = fox;
